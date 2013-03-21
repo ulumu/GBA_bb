@@ -4009,15 +4009,15 @@ bool gbReadSaveState(const char *name)
 bool gbWritePNGFile(const char *fileName)
 {
   if(gbBorderOn)
-    return utilWritePNGFile(fileName, 256, 224, pix);
-  return utilWritePNGFile(fileName, 160, 144, pix);
+    return utilWritePNGFile(fileName, GB_BWIDTH, GB_BHEIGHT, pix);
+  return utilWritePNGFile(fileName, GB_WIDTH, GB_HEIGHT, pix);
 }
 
 bool gbWriteBMPFile(const char *fileName)
 {
   if(gbBorderOn)
-    return utilWriteBMPFile(fileName, 256, 224, pix);
-  return utilWriteBMPFile(fileName, 160, 144, pix);
+    return utilWriteBMPFile(fileName, GB_BWIDTH, GB_BHEIGHT, pix);
+  return utilWriteBMPFile(fileName, GB_WIDTH, GB_HEIGHT, pix);
 }
 
 void gbCleanUp()

@@ -101,12 +101,14 @@ using namespace std;
 #ifdef __PLAYBOOK__
 static pthread_mutex_t loader_mutex = PTHREAD_MUTEX_INITIALIZER;
 static vector<string> vecList;
+static vector<string> sdvecList;
 vector<string> sortedvecList;
 #endif
 
 #ifdef __QNXNTO__
 #include <sys/slog.h>
 #include <sys/slogcodes.h>
+#include "bbDialog.h"
 
 #undef SLOG
 #define SLOG(fmt, ...) slogf(_SLOG_SETCODE(_SLOGC_TEST+328, 0), _SLOG_DEBUG1, "[GBA-LOG][%s:%d]:"fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__)
@@ -123,8 +125,6 @@ extern void remoteSetProtocol(int);
 extern void remoteSetPort(int);
 
 char g_runningFile_str[512];
-
-static vector<string> vsList;
 
 struct EmulatedSystem emulator = {
 	NULL,
@@ -498,62 +498,9 @@ void updateSurface(u32 w, u32 h, u8 *pixels)
 
 //-------------------------------------------------------------------------------------------------
 
-
-vector<string> GetRomDirListing( const char *dpath )
+void showAlert(int size)
 {
-	//vector<string> vsList;
-
-#ifdef __PLAYBOOK__
-	DIR* dirp;
-	struct dirent* direntp;
-
-#endif
-
-	if(!dpath)
-	{
-		SLOG("dpath is null.\n");
-		return vsList;
-	}
-
-#ifdef __PLAYBOOK__
-
-	dirp = opendir( SYSROMDIR );
-	if( dirp != NULL )
-	{
-		for(;;)
-		{
-			direntp = readdir( dirp );
-			if( direntp == NULL )
-				break;
-
-			// FCEUI_DispMessage(direntp->d_name,0);
-			string tmp = direntp->d_name;
-
-			if( strcmp( direntp->d_name, ".") == 0)
-			{
-				continue;
-			}
-
-			if( strcmp( direntp->d_name,"..") == 0)
-				continue;
-
-			if( (tmp.substr(tmp.find_last_of(".") + 1) == "gba") ||
-				(tmp.substr(tmp.find_last_of(".") + 1) == "GBA")   )
-			{
-				// SLOG("ROM: %s\n", direntp->d_name);
-				vsList.push_back(direntp->d_name);
-			}
-		}
-	}
-	else
-	{
-		SLOG("dirp is NULL ...\n");
-	}
-
-#endif
-	SLOG("number of files %d\n", vsList.size() );
-
-	if (vsList.size() == 0) {
+	if (size == 0) {
 		dialog_instance_t alert_dialog = 0;
 		dialog_request_events(0);    //0 indicates that all events are requested
 		if (dialog_create_alert(&alert_dialog) != BPS_SUCCESS) {
@@ -568,8 +515,6 @@ vector<string> GetRomDirListing( const char *dpath )
 			alert_dialog = 0;
 			//return EXIT_FAILURE;
 		}
-
-		char* cancel_button_context = "Cancelled";
 
 		if (dialog_add_button(alert_dialog, "OK", true, 0, true)
 				!= BPS_SUCCESS) {
@@ -610,8 +555,59 @@ vector<string> GetRomDirListing( const char *dpath )
 			dialog_destroy(alert_dialog);
 		}
 	}
+}
 
-	return vsList;
+void GetRomDirListing(vector<string> &vsList, const char *dpath )
+{
+#ifdef __PLAYBOOK__
+	DIR* dirp;
+	struct dirent* direntp;
+
+	if(!dpath)
+	{
+		SLOG("dpath is null.\n");
+		return;
+	}
+
+	dirp = opendir( dpath );
+	if( dirp != NULL )
+	{
+		SLOG("[---- Parsing %s ----]", dpath);
+		for(;;)
+		{
+			direntp = readdir( dirp );
+			if( direntp == NULL )
+				break;
+
+			// FCEUI_DispMessage(direntp->d_name,0);
+			string tmp = direntp->d_name;
+
+			if( strcmp( direntp->d_name, ".") == 0)
+			{
+				continue;
+			}
+
+			if( strcmp( direntp->d_name,"..") == 0)
+				continue;
+
+			if( (tmp.substr(tmp.find_last_of(".") + 1) == "gba") ||
+				(tmp.substr(tmp.find_last_of(".") + 1) == "GBA") ||
+				(tmp.substr(tmp.find_last_of(".") + 1) == "gbc") ||
+				(tmp.substr(tmp.find_last_of(".") + 1) == "gb")    )
+			{
+				tmp = dpath;
+				tmp += direntp->d_name;
+				SLOG("ROM: %s", tmp.c_str());
+				vsList.push_back(tmp);
+			}
+		}
+	}
+	else
+	{
+		SLOG("[%s] not found ...", dpath);
+	}
+
+#endif
 }
 
 
@@ -622,7 +618,7 @@ vector<string> GetRomDirListing( const char *dpath )
 
 
 vector<string> sortAlpha(vector<string> sortThis)
-			{
+{
 	int swap;
 	string temp;
 
@@ -642,12 +638,15 @@ vector<string> sortAlpha(vector<string> sortThis)
 	}while (swap != 0);
 
 	return sortThis;
-			}
+}
 
 int AutoLoadRom(void)
 {
-	// static int gameIndex;
-	int status = 0;
+	static int load_in_progress = 0;
+	string    romfilename;
+	bbDialog *dialog;
+	const char ** list = 0;
+	int           count;
 
 	extern void sdlWriteBattery();
 	extern void sdlReadBattery();
@@ -655,142 +654,177 @@ int AutoLoadRom(void)
 	sdlWriteBattery();
 
 	pthread_mutex_lock(&loader_mutex);
-	const char ** list = 0;
-	int count = 0;
+
 	list = (const char**)malloc(sortedvecList.size()*sizeof(char*));
 
-
-
-	for(;;){
-		if(count >= sortedvecList.size()) break;
-		//		SLOG( "%d \n", count);
-		list[count] = sortedvecList[count].c_str();
-		count++;
+	// Create Dialog file list, only the filename without the FULL path
+	for(count=0; count < sortedvecList.size(); count++)
+	{
+		romfilename = sortedvecList.at(count);
+		list[count] = sortedvecList[count].c_str() + romfilename.find_last_of("/") + 1;
 	}
 
-	// ROM selector
-	dialog_instance_t dialog = 0;
-	int i, rc;
-	bps_event_t *event;
-	int domain = 0;
-	const char * label;
-	char romfilename[256];
-	dialog_create_popuplist(&dialog);
-	dialog_set_popuplist_items(dialog, list, sortedvecList.size());
+	dialog = new bbDialog;
+	if (dialog)
+	{
+		gameIndex = dialog->showPopuplistDialog(list, sortedvecList.size(), "ROM Selector");
+		delete dialog;
+		free(list);
 
-	char* cancel_button_context = "Canceled";
-	char* okay_button_context = "Okay";
-	dialog_add_button(dialog, DIALOG_CANCEL_LABEL, true, cancel_button_context, true);
-	dialog_add_button(dialog, DIALOG_OK_LABEL, true, okay_button_context, true);
-	dialog_set_popuplist_multiselect(dialog, false);
-	dialog_show(dialog);
+		if (gameIndex < 0)
+		{
+			g_LOADING_ROM    = 0;
+			stopState        = false;
+			load_in_progress = 0;
 
-	while(1){
-		bps_get_event(&event, -1);
+			pthread_mutex_unlock(&loader_mutex);
 
-		if (event) {
-			domain = bps_event_get_domain(event);
-			if (domain == dialog_get_domain()) {
-				int *response[1];
-				int num;
-
-				label = dialog_event_get_selected_label(event);
-
-				if(strcmp(label, DIALOG_OK_LABEL) == 0){
-					dialog_event_get_popuplist_selected_indices(event, (int**)response, &num);
-					if(num != 0){
-						//*response[0] is the index that was selected
-						printf("%s", list[*response[0]]);fflush(stdout);
-						strcpy(romfilename, list[*response[0]]);
-					}
-					bps_free(response[0]);
-				} else {
-					printf("User has canceled ISO dialog.");
-					return false;
-				}
-				break;
-			}
+			return false;
 		}
+		else
+			romfilename = sortedvecList[gameIndex];
 	}
-
 
 	//test end
 
 	SLOG("AutoLoadRom\n");
-	string baseDir = SYSROMDIR;
 
 	memset(&g_runningFile_str[0],0,64);
-	sprintf(&g_runningFile_str[0], romfilename);
+	sprintf(&g_runningFile_str[0], romfilename.c_str());
 
-	baseDir = baseDir + romfilename;
-	SLOG("loading: %d/%d '%s'\n",gameIndex + 1, sortedvecList.size(), baseDir.c_str() );
-	strcpy(filename, romfilename);
+	SLOG("loading: %d/%d '%s'\n",gameIndex + 1, sortedvecList.size(), romfilename.c_str() );
+	strcpy(filename, romfilename.c_str());
 
 
-	int failed;
 	int size = 0;
-	static int load_in_progress = 0;
 
 	if(load_in_progress)
-		return false;
-
-
-
-	g_LOADING_ROM = 1;
-	stopState = true;
-
-
-	load_in_progress = 1;
-	CPUCleanUp();         // free dynamic allocated mem etc.
-	SLOG("RomLoad: CPULoadRom\n");
-
-	if( (size=CPULoadRom(baseDir.c_str())) == 0)
 	{
-		SLOG("RomLoad: ERROR loading %s\n",baseDir.c_str());
-		g_LOADING_ROM = 0;
-		load_in_progress = false;
+		g_LOADING_ROM    = 0;
+		stopState        = false;
+		load_in_progress = 0;
+
+		pthread_mutex_unlock(&loader_mutex);
+
 		return false;
 	}
 
-	// sdlApplyPerImagePreferences();
-	doMirroring(mirroringEnable);
+	g_LOADING_ROM    = 1;
+	stopState        = true;
+	load_in_progress = 1;
 
-	cartridgeType = 0;
-	emulator = GBASystem;
+	// free dynamic allocated mem etc of current ROM
+	if (cartridgeType == IMAGE_GBA)
+	{
+		CPUCleanUp();
+	}
+	else if (cartridgeType == IMAGE_GB)
+	{
+		gbCleanUp();
+	}
 
-	SLOG("RomLoad: CPUInit '%s' %d\n", biosFileName, useBios);
+	IMAGE_TYPE type = utilFindType(filename);
 
-	stopState = false;
-	CPUInit(biosFileName, 1);
+	SLOG("'%s' type = %d\n",filename, type);
 
-	/*
-  int patchnum;
-  for (patchnum = 0; patchnum < sdl_patch_num; patchnum++) {
-	SLOG( "Trying patch %s%s\n", sdl_patch_names[patchnum],
-	  applyPatch(sdl_patch_names[patchnum], &rom, &size) ? " [success]" : "");
-  }
-	 */
-	SLOG("RomLoad: CPUReset\n");
+	if(type == IMAGE_UNKNOWN) {
+		systemMessage(0, "Unknown file type %s", filename);
+		g_LOADING_ROM    = 0;
+		stopState        = false;
+		load_in_progress = 0;
 
-	CPUReset();
-	SLOG("RomLoad: ok\n");
+		pthread_mutex_unlock(&loader_mutex);
+
+		return false;
+	}
+	cartridgeType = (int)type;
+
+
+	if (cartridgeType == IMAGE_GB)
+	{
+		SLOG("GB image '%s'\n",filename);
+		if ( (size = gbLoadRom(filename)) == 0)
+		{
+			SLOG("ERROR loading %s\n",filename);
+			g_LOADING_ROM    = 0;
+			stopState        = false;
+			load_in_progress = 0;
+
+			pthread_mutex_unlock(&loader_mutex);
+
+			return false;
+		}
+		gbGetHardwareType();
+
+		// used for the handling of the gb Boot Rom
+		if (gbHardware & 5)
+			gbCPUInit(gbBiosFileName, useBios);
+
+		emulator = GBSystem;
+
+		SLOG("gbReset");
+		gbReset();
+	}
+	else if (cartridgeType == IMAGE_GBA)
+	{
+		SLOG("GB image '%s'\n", filename);
+		if( (size=CPULoadRom(filename)) == 0)
+		{
+			SLOG("ERROR loading %s\n",filename);
+			g_LOADING_ROM    = 0;
+			stopState        = false;
+			load_in_progress = 0;
+
+			pthread_mutex_unlock(&loader_mutex);
+
+			return false;
+		}
+
+		// sdlApplyPerImagePreferences();
+		doMirroring(mirroringEnable);
+
+		emulator = GBASystem;
+
+		SLOG("CPUInit '%s' %d", biosFileName, useBios);
+
+		CPUInit(biosFileName, useBios);
+
+		SLOG("CPUReset");
+
+		CPUReset();
+	}
+
+	g_LOADING_ROM    = 0;
+	stopState        = false;
 	load_in_progress = 0;
+
+	SLOG("RomLoad: ok\n");
 	sdlReadBattery();
 
-
+	pthread_mutex_unlock(&loader_mutex);
 	//drawText(screen, destPitch, 40, 150, szFile, 0);
-
-
-	pthread_mutex_unlock(&loader_mutex);  // -lpthread normally would be added, it's already in PB runtime.
-
-	free(list);
 	return true;
 }
 
 void UpdateRomList(void)
 {
-	vecList = GetRomDirListing("/accounts/1000/shared/misc/roms/gba");
-	sortedvecList = sortAlpha(vecList);
+	GetRomDirListing(vecList, SYSROMDIR);
+	GetRomDirListing(vecList, SDCARDROMDIR);
+
+	if (vecList.size() > 0)
+	{
+		sortedvecList = sortAlpha(vecList);
+	}
+	else
+	{
+		bbDialog *dialog = new (bbDialog);
+
+		dialog->showAlert("GBAEMU Error Report", "ERROR: You do not have any ROMS! Add GBA BIOS & ROMS to:\"misc/roms/gba\"");
+
+		delete dialog;
+
+		exit(-1);
+	}
 }
 
 
@@ -1435,13 +1469,13 @@ void sdlReadPreferences()
 {
 	//  FILE *f = sdlFindFile("vbam.cfg");
 
-	mkdir("/accounts/1000/shared/misc/gbaemu", 0777);
-	chmod("/accounts/1000/shared/misc/gbaemu", 0777);
+	mkdir(SYSCONFDIR, 0777);
+	chmod(SYSCONFDIR, 0777);
 
-	FILE *f = fopen("/accounts/1000/shared/misc/gbaemu/vbam.cfg","r");
+	FILE *f = fopen(SYSCONFDIR"/vbam.cfg","r");
 
 	if(f == NULL) {
-		SLOG( "/accounts/1000/shared/misc/gbaemu/vbam.cfg not found... \n");
+		SLOG( SYSCONFDIR"/vbam.cfg not found... \n");
 		f = fopen("vbam_default.cfg","r");
 		if(f == NULL)
 		{
@@ -1497,6 +1531,7 @@ static void sdlApplyPerImagePreferences()
 			continue;
 
 		if(!strcmp(token, buffer)) {
+			SLOG("Found Game token <%s>", buffer);
 			found = true;
 			break;
 		}
@@ -1728,10 +1763,10 @@ void sdlInitVideo() {
 		flags |= SDL_HWSURFACE | SDL_DOUBLEBUF;
 
 	if (fullscreen && g_openGL) {
-		screenWidth  = g_destWidth * 2;
-		screenHeight = g_destHeight * 2;
+		screenWidth  = 480;
+		screenHeight = 320;
 	} else {
-		screenWidth =  g_destWidth;
+		screenWidth  = g_destWidth;
 		screenHeight = g_destHeight;
 	}
 
@@ -1787,7 +1822,7 @@ void sdlInitVideo() {
 		}
 		else
 		{
-			sdlOpenGLInit(screenWidth, screenWidth);
+			sdlOpenGLInit(screenWidth, screenHeight);
 		}
 
 		g_destPitch = (systemColorDepth >> 3) * g_destWidth;
@@ -2487,7 +2522,7 @@ int main(int argc, char **argv)
 
 
 
-#ifndef _WIN32
+#ifdef __QNXNTO__
 	// Get home dir
 
 	mkdir("/accounts/1000/shared/misc/roms",0777);
@@ -2500,7 +2535,7 @@ int main(int argc, char **argv)
 
 	homeDir = vbaPath;
 	useBios = true;
-	strcpy(biosFileName, SYSROMDIR"gba_bios.bin");
+	strcpy(biosFileName, SYSROMDIR"gba.bin");
 
 	ifstream ifile("/accounts/1000/shared/misc/gbaemu/vbam-over.ini");
 	if(!ifile){
@@ -2515,12 +2550,9 @@ int main(int argc, char **argv)
 		ofstream f22("/accounts/1000/shared/misc/gbaemu/vbam.cfg", fstream::trunc|fstream::binary);
 		f22 << f11.rdbuf();
 	}
-	UpdateRomList();
-	//  snprintf(buf, 1024, "%s/%s", homeDir, DOT_DIR);
-	// Make dot dir if not existent
 
-	//  if (stat(buf, &s) == -1 || !S_ISDIR(s.st_mode))
-	//      mkdir(buf, 0755);
+	// Create ROM files list
+	UpdateRomList();
 #endif
 
 	sdlReadPreferences();
@@ -2741,76 +2773,49 @@ int main(int argc, char **argv)
 
 	if(1) {
 #ifdef __QNXNTO__
-		const char *szFile = 0;
-		const char ** list = 0;
-		int count = 0;
+		const char   *szFile = 0;
+		const char  **list = 0;
+		int           count = 0;
+		string        romfilename;
+		bbDialog     *dialog;
+
 		list = (const char**)malloc(sortedvecList.size()*sizeof(char*));
 
+		if (list)
+		{
+			for(count = 0; count < sortedvecList.size(); count++)
+			{
+				romfilename = sortedvecList.at(count);
+				list[count] = sortedvecList[count].c_str() + romfilename.find_last_of("/") + 1;
+			}
 
+			dialog = new bbDialog;
+			gameIndex = dialog->showPopuplistDialog(list, sortedvecList.size(), "ROM selector");
+			delete dialog;
+			free(list);
 
-		for(;;){
-			if(count >= sortedvecList.size()) break;
-			list[count] = sortedvecList[count].c_str();
-			count++;
-		}
-
-		// ROM selector
-		dialog_instance_t dialog = 0;
-		int i, rc;
-		bps_event_t *event;
-		int domain = 0;
-		const char * label;
-		char romfilename[256];
-		dialog_create_popuplist(&dialog);
-		dialog_set_popuplist_items(dialog, list, sortedvecList.size());
-
-		char* cancel_button_context = "Canceled";
-		char* okay_button_context = "Okay";
-		dialog_add_button(dialog, DIALOG_CANCEL_LABEL, true, cancel_button_context, true);
-		dialog_add_button(dialog, DIALOG_OK_LABEL, true, okay_button_context, true);
-		dialog_set_popuplist_multiselect(dialog, false);
-		dialog_show(dialog);
-
-		while(1){
-			bps_get_event(&event, -1);
-
-			if (event) {
-				domain = bps_event_get_domain(event);
-				if (domain == dialog_get_domain()) {
-					int *response[1];
-					int num;
-
-					label = dialog_event_get_selected_label(event);
-
-					if(strcmp(label, DIALOG_OK_LABEL) == 0){
-						dialog_event_get_popuplist_selected_indices(event, (int**)response, &num);
-						if(num != 0){
-							//*response[0] is the index that was selected
-							printf("%s", list[*response[0]]);fflush(stdout);
-							strcpy(romfilename, list[*response[0]]);
-						}
-						bps_free(response[0]);
-					} else {
-						printf("User has canceled ISO dialog.");
-						return false;
-					}
-					break;
-				}
+			if (gameIndex >= 0)
+			{
+				romfilename = sortedvecList.at(gameIndex);
+			}
+			else
+			{
+				return -1;
 			}
 		}
-
-		string baseDir = SYSROMDIR;
+		else
+		{
+			SLOG("Out of Memory", "Fail creating ROM list, quiting!!");
+			return -1;
+		}
 
 		memset(&g_runningFile_str[0],0,64);
-		sprintf(&g_runningFile_str[0], romfilename);
+		sprintf(&g_runningFile_str[0], romfilename.c_str());
 
-		baseDir = baseDir + romfilename;
-		SLOG("loading: %d/%d '%s'\n",gameIndex + 1, sortedvecList.size(), baseDir.c_str() );
-		strcpy(filename, romfilename);
-		szFile = baseDir.c_str();
+		SLOG("loading: %d/%d '%s'\n",gameIndex + 1, sortedvecList.size(), romfilename.c_str() );
+		strcpy(filename, romfilename.c_str());
+		szFile = romfilename.c_str();
 		SLOG("%s",szFile);
-
-		free(list);
 #else
 		char *szFile = argv[optind];
 #endif
@@ -2821,7 +2826,7 @@ int main(int argc, char **argv)
 		if (len > SYSMSG_BUFFER_SIZE)
 		{
 			SLOG("%s :%s: File name too long\n",argv[0],szFile);
-			exit(-1);
+			exit(0);
 		}
 
 		if (sdlAutoPatch && sdl_patch_num == 0)
@@ -2867,8 +2872,34 @@ int main(int argc, char **argv)
 		}
 		cartridgeType = (int)type;
 
-		if(type == IMAGE_GBA) {
+		if(type == IMAGE_GB)
+		{
+			SLOG("GB image '%s'\n",szFile);
+			failed = !gbLoadRom(szFile);
+			if(!failed) {
+				gbGetHardwareType();
 
+				// used for the handling of the gb Boot Rom
+				if (gbHardware & 5)
+					gbCPUInit(gbBiosFileName, useBios);
+
+				cartridgeType = IMAGE_GB;
+				emulator = GBSystem;
+
+				int size = gbRomSize, patchnum;
+				for (patchnum = 0; patchnum < sdl_patch_num; patchnum++) {
+					fprintf(stdout, "Trying patch %s%s\n", sdl_patch_names[patchnum],
+							applyPatch(sdl_patch_names[patchnum], &gbRom, &size) ? " [success]" : "");
+				}
+				if(size != gbRomSize) {
+					gbUpdateSizes();
+					gbReset();
+				}
+				gbReset();
+			}
+		}
+		else if(type == IMAGE_GBA)
+		{
 			SLOG("GBA image '%s'\n",szFile);
 			int size = CPULoadRom(szFile);
 			failed = (size == 0);
@@ -2944,52 +2975,51 @@ int main(int argc, char **argv)
 	inputInitJoysticks();
 
 	if(cartridgeType == 0) {
-		g_srcWidth = 240;
-		g_srcHeight = 160;
+		g_srcWidth             = 240;
+		g_srcHeight            = 160;
 		systemFrameSkip = frameSkip;
 	} else if (cartridgeType == 1) {
 		if(gbBorderOn) {
-			g_srcWidth = 256;
-			g_srcHeight = 224;
-			gbBorderLineSkip = 256;
-			gbBorderColumnSkip = 48;
-			gbBorderRowSkip = 40;
+			g_srcWidth         = GB_BWIDTH;
+			g_srcHeight        = GB_BHEIGHT;
+			gbBorderLineSkip   = GB_BWIDTH;
+			gbBorderColumnSkip = (GB_BWIDTH  - GB_WIDTH)/2;
+			gbBorderRowSkip    = (GB_BHEIGHT - GB_HEIGHT)/2;
 		} else {
-			g_srcWidth = 160;
-			g_srcHeight = 144;
-			gbBorderLineSkip = 160;
+			g_srcWidth         = GB_WIDTH;
+			g_srcHeight        = GB_HEIGHT;
+			gbBorderLineSkip   = GB_WIDTH;
 			gbBorderColumnSkip = 0;
-			gbBorderRowSkip = 0;
+			gbBorderRowSkip    = 0;
 		}
 		systemFrameSkip = gbFrameSkip;
 	} else {
-		g_srcWidth = 320;
+		g_srcWidth  = 320;
 		g_srcHeight = 240;
 	}
 
 
-	SLOG("initialize video mode ...\n");
+	SLOG("initialize video mode ...");
 	sdlReadDesktopVideoMode();
 	sdlInitVideo();
 
-	SLOG("initialize filter ...\n");
+	SLOG("initialize filter ...");
 
 	filterFunction = initFilter(filter, systemColorDepth, g_srcWidth);
 	if (!filterFunction) {
-		SLOG("Unable to init filter '%s'\n", getFilterName(filter));
+		SLOG("Unable to init filter '%s'", getFilterName(filter));
 		// exit(-1);
 	}
 
 	if(systemColorDepth == 15)
 		systemColorDepth = 16;
 
-	if(systemColorDepth != 16 && systemColorDepth != 24 &&
-			systemColorDepth != 32) {
+	if(systemColorDepth != 16 && systemColorDepth != 24 && systemColorDepth != 32) {
 		SLOG("Unsupported color depth '%d'.\nOnly 16, 24 and 32 bit color depths are supported\n", systemColorDepth);
 		exit(-1);
 	}
 
-	SLOG("Color depth: %d  update color maps ...\n", systemColorDepth);
+	SLOG("Color depth: %d  update color maps ...", systemColorDepth);
 
 
 	utilUpdateSystemColorMaps();
@@ -3372,11 +3402,11 @@ bool systemPauseOnFrame()
 
 void systemGbBorderOn()
 {
-	g_srcWidth = 256;
-	g_srcHeight = 224;
-	gbBorderLineSkip = 256;
-	gbBorderColumnSkip = 48;
-	gbBorderRowSkip = 40;
+	g_srcWidth         = GB_BWIDTH;
+	g_srcHeight        = GB_BHEIGHT;
+	gbBorderLineSkip   = GB_BWIDTH;
+	gbBorderColumnSkip = (GB_BWIDTH  - GB_WIDTH)/2;
+	gbBorderRowSkip    = (GB_BHEIGHT - GB_HEIGHT)/2;
 
 	sdlInitVideo();
 

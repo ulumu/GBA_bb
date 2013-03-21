@@ -28,5 +28,6 @@
 #define STRPRODUCTVER  "1, 8, 0, 600\0"
 #define SYSCONFDIR     "/accounts/1000/shared/misc/gbaemu"
 #define SYSROMDIR      "/accounts/1000/shared/misc/roms/gba/"
+#define SDCARDROMDIR   "/accounts/1000/removable/sdcard/misc/roms/gba/"
 #define VERSION        "1.8.0"
 #endif //__AUTOBUILD_H__

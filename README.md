@@ -1,8 +1,17 @@
 VBAMpb BB10 Port of VBA-M GBA/GB/GBC emulator
 
 misc\roms\gba        place unzipped .gba games in here
-                     place gba_bios.bin file here if you wish to play games...
+                     place gba.bin file here if you wish to play games...
 misc\gbaemu          configuration, saves and other stuff.
+
+v1.0.4.2
+
+- Add sd card ROM loading support
+- Fix random Touchscreen Button disappering issue
+- Improve Audio quality
+- Add GBC and GB ROM support
+- Add Touchscreen overlay transparency user control
+
 
 v1.0.2.1
 

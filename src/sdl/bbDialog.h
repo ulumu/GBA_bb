@@ -16,8 +16,8 @@ public:
 	bbDialog();
 	virtual ~bbDialog();
 
-	void showAlert(const char *string);
-	void showPopuplistDialog(const char **list, int listCount, const char *title);
+	void showAlert(const char *title, const char *content);
+	int  showPopuplistDialog(const char **list, int listCount, const char *title);
 
 private:
 	dialog_instance_t mDialog;

@@ -1329,7 +1329,6 @@ emulating = 0;
 
 int CPULoadRom(const char *szFile)
 {
-fprintf(stderr,"CPULoadRom\n");
 
 romSize = 0x2000000;
 if(rom != NULL) {
@@ -1338,10 +1337,8 @@ if(rom != NULL) {
 
 systemSaveUpdateCounter = SYSTEM_SAVE_NOT_UPDATED;
 
-fprintf(stderr,"CPULoadRom: malloc ROM block\n");
 rom = (u8 *)malloc(0x2000000);
 if(rom == NULL) {
-	fprintf(stderr,"critical malloc failed! \n");
 	systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
 			"ROM");
 	return 0;
@@ -3120,7 +3117,6 @@ void CPUInit(const char *biosFileName, bool useBiosFile)
 
 	void CPUReset()
 	{
-		fprintf( stderr,"CPUReset\n");
 
 		if(gbaSaveType == 0) {
 			if(eepromInUse)
@@ -3630,21 +3626,21 @@ void CPUInit(const char *biosFileName, bool useBiosFile)
 								}
 								capturePrevious = capture;
 #endif
-DISPSTAT |= 1;
-DISPSTAT &= 0xFFFD;
-UPDATE_REG(0x04, DISPSTAT);
-if(DISPSTAT & 0x0008) {
-IF |= 1;
-UPDATE_REG(0x202, IF);
-}
-CPUCheckDMA(1, 0x0f);
-if(frameCount >= framesToSkip) {
-systemDrawScreen();
-frameCount = 0;
-} else
-frameCount++;
-if(systemPauseOnFrame())
-ticks = 0;
+								DISPSTAT |= 1;
+								DISPSTAT &= 0xFFFD;
+								UPDATE_REG(0x04, DISPSTAT);
+								if(DISPSTAT & 0x0008) {
+									IF |= 1;
+									UPDATE_REG(0x202, IF);
+								}
+								CPUCheckDMA(1, 0x0f);
+								if(frameCount >= framesToSkip) {
+									systemDrawScreen();
+									frameCount = 0;
+								} else
+									frameCount++;
+								if(systemPauseOnFrame())
+									ticks = 0;
 							}
 
 							UPDATE_REG(0x04, DISPSTAT);

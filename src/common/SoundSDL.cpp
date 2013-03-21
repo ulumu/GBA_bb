@@ -101,8 +101,8 @@ bool SoundSDL::init(long sampleRate)
 	audio.freq = sampleRate;
 	audio.format = AUDIO_S16SYS;
 	audio.channels = 2;
-	audio.samples = 1024;
-//  audio.samples = 4096; // creates an echo delay stick with 1024!
+//	audio.samples = 1024;
+    audio.samples = 4096; // creates an echo delay stick with 1024!
 	audio.callback = soundCallback;
 	audio.userdata = this;
 
