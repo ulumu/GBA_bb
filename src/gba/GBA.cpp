@@ -548,271 +548,273 @@ extern u32 line3[240];
 
 #define CLEAR_ARRAY(a) \
 	{\
-u32 *array = (a);\
-for(int i = 0; i < 240; i++) {\
-	*array++ = 0x80000000;\
-}\
+		u32 *array = (a);\
+		for(int i = 0; i < 240; i++) {\
+			*array++ = 0x80000000;\
+		}\
 	}\
 
 void CPUUpdateRenderBuffers(bool force)
 {
-if(!(layerEnable & 0x0100) || force) {
-	CLEAR_ARRAY(line0);
-}
-if(!(layerEnable & 0x0200) || force) {
-	CLEAR_ARRAY(line1);
-}
-if(!(layerEnable & 0x0400) || force) {
-	CLEAR_ARRAY(line2);
-}
-if(!(layerEnable & 0x0800) || force) {
-	CLEAR_ARRAY(line3);
-}
+	if(!(layerEnable & 0x0100) || force) {
+		CLEAR_ARRAY(line0);
+	}
+	if(!(layerEnable & 0x0200) || force) {
+		CLEAR_ARRAY(line1);
+	}
+	if(!(layerEnable & 0x0400) || force) {
+		CLEAR_ARRAY(line2);
+	}
+	if(!(layerEnable & 0x0800) || force) {
+		CLEAR_ARRAY(line3);
+	}
 }
 
 static bool CPUWriteState(gzFile gzFile)
 {
-utilWriteInt(gzFile, SAVE_GAME_VERSION);
+	utilWriteInt(gzFile, SAVE_GAME_VERSION);
 
-utilGzWrite(gzFile, &rom[0xa0], 16);
+	utilGzWrite(gzFile, &rom[0xa0], 16);
 
-utilWriteInt(gzFile, useBios);
+	utilWriteInt(gzFile, useBios);
 
-utilGzWrite(gzFile, &reg[0], sizeof(reg));
+	utilGzWrite(gzFile, &reg[0], sizeof(reg));
 
-utilWriteData(gzFile, saveGameStruct);
+	utilWriteData(gzFile, saveGameStruct);
 
-// new to version 0.7.1
-utilWriteInt(gzFile, stopState);
-// new to version 0.8
-utilWriteInt(gzFile, IRQTicks);
+	// new to version 0.7.1
+	utilWriteInt(gzFile, stopState);
+	// new to version 0.8
+	utilWriteInt(gzFile, IRQTicks);
 
-utilGzWrite(gzFile, internalRAM, 0x8000);
-utilGzWrite(gzFile, paletteRAM, 0x400);
-utilGzWrite(gzFile, workRAM, 0x40000);
-utilGzWrite(gzFile, vram, 0x20000);
-utilGzWrite(gzFile, oam, 0x400);
-utilGzWrite(gzFile, pix, 4*241*162);
-utilGzWrite(gzFile, ioMem, 0x400);
+	utilGzWrite(gzFile, internalRAM, 0x8000);
+	utilGzWrite(gzFile, paletteRAM, 0x400);
+	utilGzWrite(gzFile, workRAM, 0x40000);
+	utilGzWrite(gzFile, vram, 0x20000);
+	utilGzWrite(gzFile, oam, 0x400);
+	utilGzWrite(gzFile, pix, 4*241*162);
+	utilGzWrite(gzFile, ioMem, 0x400);
 
-eepromSaveGame(gzFile);
-flashSaveGame(gzFile);
-soundSaveGame(gzFile);
+	eepromSaveGame(gzFile);
+	flashSaveGame(gzFile);
+	soundSaveGame(gzFile);
 
-cheatsSaveGame(gzFile);
+	cheatsSaveGame(gzFile);
 
-// version 1.5
-rtcSaveGame(gzFile);
+	// version 1.5
+	rtcSaveGame(gzFile);
 
-return true;
+	return true;
 }
 
 bool CPUWriteState(const char *file)
 {
-gzFile gzFile = utilGzOpen(file, "wb");
+	gzFile gzFile = utilGzOpen(file, "wb");
 
-if(gzFile == NULL) {
-	systemMessage(MSG_ERROR_CREATING_FILE, N_("Error creating file %s"), file);
-	return false;
-}
+	if(gzFile == NULL) {
+		systemMessage(MSG_ERROR_CREATING_FILE, N_("Error creating file %s"), file);
+		return false;
+	}
 
-bool res = CPUWriteState(gzFile);
+	bool res = CPUWriteState(gzFile);
 
-utilGzClose(gzFile);
+	utilGzClose(gzFile);
 
-return res;
+	return res;
 }
 
 bool CPUWriteMemState(char *memory, int available)
 {
-gzFile gzFile = utilMemGzOpen(memory, available, "w");
+	gzFile gzFile = utilMemGzOpen(memory, available, "w");
 
-if(gzFile == NULL) {
-	return false;
-}
+	if(gzFile == NULL) {
+		return false;
+	}
 
-bool res = CPUWriteState(gzFile);
+	bool res = CPUWriteState(gzFile);
 
-long pos = utilGzMemTell(gzFile)+8;
+	long pos = utilGzMemTell(gzFile)+8;
 
-if(pos >= (available))
-	res = false;
+	if(pos >= (available))
+		res = false;
 
-utilGzClose(gzFile);
+	utilGzClose(gzFile);
 
-return res;
+	return res;
 }
 
 static bool CPUReadState(gzFile gzFile)
 {
-int version = utilReadInt(gzFile);
+	int version = utilReadInt(gzFile);
 
-if(version > SAVE_GAME_VERSION || version < SAVE_GAME_VERSION_1) {
-	systemMessage(MSG_UNSUPPORTED_VBA_SGM,
-			N_("Unsupported VisualBoyAdvance save game version %d"),
-			version);
-	return false;
-}
+	if(version > SAVE_GAME_VERSION || version < SAVE_GAME_VERSION_1) {
+		systemMessage(MSG_UNSUPPORTED_VBA_SGM,
+				N_("Unsupported VisualBoyAdvance save game version %d"),
+				version);
+		return false;
+	}
 
-u8 romname[17];
+	u8 romname[17];
 
-utilGzRead(gzFile, romname, 16);
+	utilGzRead(gzFile, romname, 16);
 
-if(memcmp(&rom[0xa0], romname, 16) != 0) {
-	romname[16]=0;
-	for(int i = 0; i < 16; i++)
-		if(romname[i] < 32)
-			romname[i] = 32;
-	systemMessage(MSG_CANNOT_LOAD_SGM, N_("Cannot load save game for %s"), romname);
-	return false;
-}
+	if(memcmp(&rom[0xa0], romname, 16) != 0) {
+		romname[16]=0;
+		for(int i = 0; i < 16; i++)
+			if(romname[i] < 32)
+				romname[i] = 32;
+		systemMessage(MSG_CANNOT_LOAD_SGM, N_("Cannot load save game for %s"), romname);
+		return false;
+	}
 
-bool ub = utilReadInt(gzFile) ? true : false;
+	bool ub = utilReadInt(gzFile) ? true : false;
 
-if(ub != useBios) {
-	if(useBios)
-		systemMessage(MSG_SAVE_GAME_NOT_USING_BIOS,
-				N_("Save game is not using the BIOS files"));
+	SLOG("save UB flag=%d, local useBios flag=%d", ub, useBios);
+
+	if(ub != useBios) {
+		if(useBios)
+			systemMessage(MSG_SAVE_GAME_NOT_USING_BIOS,
+					N_("Save game is not using the BIOS files"));
+		else
+			systemMessage(MSG_SAVE_GAME_USING_BIOS,
+					N_("Save game is using the BIOS file"));
+//		return false;
+	}
+
+	utilGzRead(gzFile, &reg[0], sizeof(reg));
+
+	utilReadData(gzFile, saveGameStruct);
+
+	if(version < SAVE_GAME_VERSION_3)
+		stopState = false;
 	else
-		systemMessage(MSG_SAVE_GAME_USING_BIOS,
-				N_("Save game is using the BIOS file"));
-	return false;
-}
+		stopState = utilReadInt(gzFile) ? true : false;
 
-utilGzRead(gzFile, &reg[0], sizeof(reg));
-
-utilReadData(gzFile, saveGameStruct);
-
-if(version < SAVE_GAME_VERSION_3)
-	stopState = false;
-else
-	stopState = utilReadInt(gzFile) ? true : false;
-
-if(version < SAVE_GAME_VERSION_4)
-{
-	IRQTicks = 0;
-	intState = false;
-}
-else
-{
-	IRQTicks = utilReadInt(gzFile);
-	if (IRQTicks>0)
-		intState = true;
+	if(version < SAVE_GAME_VERSION_4)
+	{
+		IRQTicks = 0;
+		intState = false;
+	}
 	else
 	{
-		intState = false;
-		IRQTicks = 0;
+		IRQTicks = utilReadInt(gzFile);
+		if (IRQTicks>0)
+			intState = true;
+		else
+		{
+			intState = false;
+			IRQTicks = 0;
+		}
 	}
-}
 
-utilGzRead(gzFile, internalRAM, 0x8000);
-utilGzRead(gzFile, paletteRAM, 0x400);
-utilGzRead(gzFile, workRAM, 0x40000);
-utilGzRead(gzFile, vram, 0x20000);
-utilGzRead(gzFile, oam, 0x400);
-if(version < SAVE_GAME_VERSION_6)
-	utilGzRead(gzFile, pix, 4*240*160);
-else
-	utilGzRead(gzFile, pix, 4*241*162);
-utilGzRead(gzFile, ioMem, 0x400);
+	utilGzRead(gzFile, internalRAM, 0x8000);
+	utilGzRead(gzFile, paletteRAM, 0x400);
+	utilGzRead(gzFile, workRAM, 0x40000);
+	utilGzRead(gzFile, vram, 0x20000);
+	utilGzRead(gzFile, oam, 0x400);
+	if(version < SAVE_GAME_VERSION_6)
+		utilGzRead(gzFile, pix, 4*240*160);
+	else
+		utilGzRead(gzFile, pix, 4*241*162);
+	utilGzRead(gzFile, ioMem, 0x400);
 
-if(skipSaveGameBattery) {
-	// skip eeprom data
-	eepromReadGameSkip(gzFile, version);
-	// skip flash data
-	flashReadGameSkip(gzFile, version);
-} else {
-	eepromReadGame(gzFile, version);
-	flashReadGame(gzFile, version);
-}
-soundReadGame(gzFile, version);
-
-if(version > SAVE_GAME_VERSION_1) {
-	if(skipSaveGameCheats) {
-		// skip cheats list data
-		cheatsReadGameSkip(gzFile, version);
+	if(skipSaveGameBattery) {
+		// skip eeprom data
+		eepromReadGameSkip(gzFile, version);
+		// skip flash data
+		flashReadGameSkip(gzFile, version);
 	} else {
-		cheatsReadGame(gzFile, version);
+		eepromReadGame(gzFile, version);
+		flashReadGame(gzFile, version);
 	}
-}
-if(version > SAVE_GAME_VERSION_6) {
-	rtcReadGame(gzFile);
-}
+	soundReadGame(gzFile, version);
 
-if(version <= SAVE_GAME_VERSION_7) {
-	u32 temp;
+	if(version > SAVE_GAME_VERSION_1) {
+		if(skipSaveGameCheats) {
+			// skip cheats list data
+			cheatsReadGameSkip(gzFile, version);
+		} else {
+			cheatsReadGame(gzFile, version);
+		}
+	}
+	if(version > SAVE_GAME_VERSION_6) {
+		rtcReadGame(gzFile);
+	}
+
+	if(version <= SAVE_GAME_VERSION_7) {
+		u32 temp;
 #define SWAP(a,b,c) \
-	temp = (a);\
-	(a) = (b)<<16|(c);\
-	(b) = (temp) >> 16;\
-	(c) = (temp) & 0xFFFF;
+		temp = (a);\
+		(a) = (b)<<16|(c);\
+		(b) = (temp) >> 16;\
+		(c) = (temp) & 0xFFFF;
 
-	SWAP(dma0Source, DM0SAD_H, DM0SAD_L);
-	SWAP(dma0Dest,   DM0DAD_H, DM0DAD_L);
-	SWAP(dma1Source, DM1SAD_H, DM1SAD_L);
-	SWAP(dma1Dest,   DM1DAD_H, DM1DAD_L);
-	SWAP(dma2Source, DM2SAD_H, DM2SAD_L);
-	SWAP(dma2Dest,   DM2DAD_H, DM2DAD_L);
-	SWAP(dma3Source, DM3SAD_H, DM3SAD_L);
-	SWAP(dma3Dest,   DM3DAD_H, DM3DAD_L);
-}
+		SWAP(dma0Source, DM0SAD_H, DM0SAD_L);
+		SWAP(dma0Dest,   DM0DAD_H, DM0DAD_L);
+		SWAP(dma1Source, DM1SAD_H, DM1SAD_L);
+		SWAP(dma1Dest,   DM1DAD_H, DM1DAD_L);
+		SWAP(dma2Source, DM2SAD_H, DM2SAD_L);
+		SWAP(dma2Dest,   DM2DAD_H, DM2DAD_L);
+		SWAP(dma3Source, DM3SAD_H, DM3SAD_L);
+		SWAP(dma3Dest,   DM3DAD_H, DM3DAD_L);
+	}
 
-if(version <= SAVE_GAME_VERSION_8) {
-	timer0ClockReload = TIMER_TICKS[TM0CNT & 3];
-	timer1ClockReload = TIMER_TICKS[TM1CNT & 3];
-	timer2ClockReload = TIMER_TICKS[TM2CNT & 3];
-	timer3ClockReload = TIMER_TICKS[TM3CNT & 3];
+	if(version <= SAVE_GAME_VERSION_8) {
+		timer0ClockReload = TIMER_TICKS[TM0CNT & 3];
+		timer1ClockReload = TIMER_TICKS[TM1CNT & 3];
+		timer2ClockReload = TIMER_TICKS[TM2CNT & 3];
+		timer3ClockReload = TIMER_TICKS[TM3CNT & 3];
 
-	timer0Ticks = ((0x10000 - TM0D) << timer0ClockReload) - timer0Ticks;
-	timer1Ticks = ((0x10000 - TM1D) << timer1ClockReload) - timer1Ticks;
-	timer2Ticks = ((0x10000 - TM2D) << timer2ClockReload) - timer2Ticks;
-	timer3Ticks = ((0x10000 - TM3D) << timer3ClockReload) - timer3Ticks;
-	interp_rate();
-}
+		timer0Ticks = ((0x10000 - TM0D) << timer0ClockReload) - timer0Ticks;
+		timer1Ticks = ((0x10000 - TM1D) << timer1ClockReload) - timer1Ticks;
+		timer2Ticks = ((0x10000 - TM2D) << timer2ClockReload) - timer2Ticks;
+		timer3Ticks = ((0x10000 - TM3D) << timer3ClockReload) - timer3Ticks;
+		interp_rate();
+	}
 
-// set pointers!
-layerEnable = layerSettings & DISPCNT;
+	// set pointers!
+	layerEnable = layerSettings & DISPCNT;
 
-CPUUpdateRender();
-CPUUpdateRenderBuffers(true);
-CPUUpdateWindow0();
-CPUUpdateWindow1();
-gbaSaveType = 0;
-switch(saveType) {
-case 0:
-	cpuSaveGameFunc = flashSaveDecide;
-	break;
-case 1:
-	cpuSaveGameFunc = sramWrite;
-	gbaSaveType = 1;
-	break;
-case 2:
-	cpuSaveGameFunc = flashWrite;
-	gbaSaveType = 2;
-	break;
-case 3:
-	break;
-case 5:
-	gbaSaveType = 5;
-	break;
-default:
-	systemMessage(MSG_UNSUPPORTED_SAVE_TYPE,
-			N_("Unsupported save type %d"), saveType);
-	break;
-}
-if(eepromInUse)
-	gbaSaveType = 3;
+	CPUUpdateRender();
+	CPUUpdateRenderBuffers(true);
+	CPUUpdateWindow0();
+	CPUUpdateWindow1();
+	gbaSaveType = 0;
+	switch(saveType) {
+	case 0:
+		cpuSaveGameFunc = flashSaveDecide;
+		break;
+	case 1:
+		cpuSaveGameFunc = sramWrite;
+		gbaSaveType = 1;
+		break;
+	case 2:
+		cpuSaveGameFunc = flashWrite;
+		gbaSaveType = 2;
+		break;
+	case 3:
+		break;
+	case 5:
+		gbaSaveType = 5;
+		break;
+	default:
+		systemMessage(MSG_UNSUPPORTED_SAVE_TYPE,
+				N_("Unsupported save type %d"), saveType);
+		break;
+	}
+	if(eepromInUse)
+		gbaSaveType = 3;
 
-systemSaveUpdateCounter = SYSTEM_SAVE_NOT_UPDATED;
-if(armState) {
-	ARM_PREFETCH;
-} else {
-	THUMB_PREFETCH;
-}
+	systemSaveUpdateCounter = SYSTEM_SAVE_NOT_UPDATED;
+	if(armState) {
+		ARM_PREFETCH;
+	} else {
+		THUMB_PREFETCH;
+	}
 
-CPUUpdateRegister(0x204, CPUReadHalfWordQuick(0x4000204));
+	CPUUpdateRegister(0x204, CPUReadHalfWordQuick(0x4000204));
 
-return true;
+	return true;
 }
 
 bool CPUReadMemState(char *memory, int available)
@@ -828,16 +830,16 @@ return res;
 
 bool CPUReadState(const char * file)
 {
-gzFile gzFile = utilGzOpen(file, "rb");
+	gzFile gzFile = utilGzOpen(file, "rb");
 
-if(gzFile == NULL)
-	return false;
+	if(gzFile == NULL)
+		return false;
 
-bool res = CPUReadState(gzFile);
+	bool res = CPUReadState(gzFile);
 
-utilGzClose(gzFile);
+	utilGzClose(gzFile);
 
-return res;
+	return res;
 }
 
 bool CPUExportEepromFile(const char *fileName)
@@ -1330,128 +1332,128 @@ emulating = 0;
 int CPULoadRom(const char *szFile)
 {
 
-romSize = 0x2000000;
-if(rom != NULL) {
-	CPUCleanUp();
-}
+	romSize = 0x2000000;
+	if(rom != NULL) {
+		CPUCleanUp();
+	}
 
-systemSaveUpdateCounter = SYSTEM_SAVE_NOT_UPDATED;
+	systemSaveUpdateCounter = SYSTEM_SAVE_NOT_UPDATED;
 
-rom = (u8 *)malloc(0x2000000);
-if(rom == NULL) {
-	systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
-			"ROM");
-	return 0;
-}
-workRAM = (u8 *)calloc(1, 0x40000);
-if(workRAM == NULL) {
-	systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
-			"WRAM");
-	return 0;
-}
+	rom = (u8 *)malloc(0x2000000);
+	if(rom == NULL) {
+		systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
+				"ROM");
+		return 0;
+	}
+	workRAM = (u8 *)calloc(1, 0x40000);
+	if(workRAM == NULL) {
+		systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
+				"WRAM");
+		return 0;
+	}
 
-u8 *whereToLoad = cpuIsMultiBoot ? workRAM : rom;
+	u8 *whereToLoad = cpuIsMultiBoot ? workRAM : rom;
 
 #ifndef NO_DEBUGGER
-if(CPUIsELF(szFile)) {
-	FILE *f = fopen(szFile, "rb");
-	if(!f) {
-		systemMessage(MSG_ERROR_OPENING_IMAGE, N_("Error opening image %s"),
-				szFile);
-		free(rom);
-		rom = NULL;
-		free(workRAM);
-		workRAM = NULL;
-		return 0;
-	}
-	bool res = elfRead(szFile, romSize, f);
-	if(!res || romSize == 0) {
-		free(rom);
-		rom = NULL;
-		free(workRAM);
-		workRAM = NULL;
-		elfCleanUp();
-		return 0;
-	}
-} else
-#endif //NO_DEBUGGER
-	if(szFile!=NULL)
-	{
-		if(!utilLoad(szFile,
-				utilIsGBAImage,
-				whereToLoad,
-				romSize)) {
+	if(CPUIsELF(szFile)) {
+		FILE *f = fopen(szFile, "rb");
+		if(!f) {
+			systemMessage(MSG_ERROR_OPENING_IMAGE, N_("Error opening image %s"),
+					szFile);
 			free(rom);
 			rom = NULL;
 			free(workRAM);
 			workRAM = NULL;
 			return 0;
 		}
+		bool res = elfRead(szFile, romSize, f);
+		if(!res || romSize == 0) {
+			free(rom);
+			rom = NULL;
+			free(workRAM);
+			workRAM = NULL;
+			elfCleanUp();
+			return 0;
+		}
+	} else
+#endif //NO_DEBUGGER
+		if(szFile!=NULL)
+		{
+			if(!utilLoad(szFile,
+					utilIsGBAImage,
+					whereToLoad,
+					romSize)) {
+				free(rom);
+				rom = NULL;
+				free(workRAM);
+				workRAM = NULL;
+				return 0;
+			}
+		}
+
+	u16 *temp = (u16 *)(rom+((romSize+1)&~1));
+	int i;
+	for(i = (romSize+1)&~1; i < 0x2000000; i+=2) {
+		WRITE16LE(temp, (i >> 1) & 0xFFFF);
+		temp++;
 	}
 
-u16 *temp = (u16 *)(rom+((romSize+1)&~1));
-int i;
-for(i = (romSize+1)&~1; i < 0x2000000; i+=2) {
-	WRITE16LE(temp, (i >> 1) & 0xFFFF);
-	temp++;
-}
+	bios = (u8 *)calloc(1,0x4000);
+	if(bios == NULL) {
+		systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
+				"BIOS");
+		CPUCleanUp();
+		return 0;
+	}
+	internalRAM = (u8 *)calloc(1,0x8000);
+	if(internalRAM == NULL) {
+		systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
+				"IRAM");
+		CPUCleanUp();
+		return 0;
+	}
+	paletteRAM = (u8 *)calloc(1,0x400);
+	if(paletteRAM == NULL) {
+		systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
+				"PRAM");
+		CPUCleanUp();
+		return 0;
+	}
+	vram = (u8 *)calloc(1, 0x20000);
+	if(vram == NULL) {
+		systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
+				"VRAM");
+		CPUCleanUp();
+		return 0;
+	}
+	oam = (u8 *)calloc(1, 0x400);
+	if(oam == NULL) {
+		systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
+				"OAM");
+		CPUCleanUp();
+		return 0;
+	}
+	pix = (u8 *)calloc(1, 4 * 241 * 162);
+	if(pix == NULL) {
+		systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
+				"PIX");
+		CPUCleanUp();
+		return 0;
+	}
+	ioMem = (u8 *)calloc(1, 0x400);
+	if(ioMem == NULL) {
+		systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
+				"IO");
+		CPUCleanUp();
+		return 0;
+	}
 
-bios = (u8 *)calloc(1,0x4000);
-if(bios == NULL) {
-	systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
-			"BIOS");
-	CPUCleanUp();
-	return 0;
-}
-internalRAM = (u8 *)calloc(1,0x8000);
-if(internalRAM == NULL) {
-	systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
-			"IRAM");
-	CPUCleanUp();
-	return 0;
-}
-paletteRAM = (u8 *)calloc(1,0x400);
-if(paletteRAM == NULL) {
-	systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
-			"PRAM");
-	CPUCleanUp();
-	return 0;
-}
-vram = (u8 *)calloc(1, 0x20000);
-if(vram == NULL) {
-	systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
-			"VRAM");
-	CPUCleanUp();
-	return 0;
-}
-oam = (u8 *)calloc(1, 0x400);
-if(oam == NULL) {
-	systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
-			"OAM");
-	CPUCleanUp();
-	return 0;
-}
-pix = (u8 *)calloc(1, 4 * 241 * 162);
-if(pix == NULL) {
-	systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
-			"PIX");
-	CPUCleanUp();
-	return 0;
-}
-ioMem = (u8 *)calloc(1, 0x400);
-if(ioMem == NULL) {
-	systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
-			"IO");
-	CPUCleanUp();
-	return 0;
-}
+	flashInit();
+	eepromInit();
 
-flashInit();
-eepromInit();
+	CPUUpdateRenderBuffers(true);
 
-CPUUpdateRenderBuffers(true);
-
-return romSize;
+	return romSize;
 }
 
 void doMirroring (bool b)
@@ -3025,11 +3027,12 @@ void CPUInit(const char *biosFileName, bool useBiosFile)
 		gbaSaveType = 0;
 		eepromInUse = 0;
 		saveType = 0;
-		useBios = false;
 		static int load_bios_once = 0;
 
-		if(!load_bios_once)
+		useBios = false;
+//		if(!load_bios_once)
 		{
+
 			if(useBiosFile)
 			{
 				load_bios_once = 1;
@@ -3050,6 +3053,7 @@ void CPUInit(const char *biosFileName, bool useBiosFile)
 		if(!useBios) {
 			memcpy(bios, myROM, sizeof(myROM));
 		}
+
 
 		int i = 0;
 
@@ -3514,7 +3518,7 @@ void CPUInit(const char *biosFileName, bool useBiosFile)
 				cpuTotalTicks = 0;
 				cpuDmaHack = false;
 
-				updateLoop:
+updateLoop:
 
 				if (IRQTicks)
 				{

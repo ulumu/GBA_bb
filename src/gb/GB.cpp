@@ -2141,34 +2141,47 @@ void gbCPUInit(const char *biosFileName, bool useBiosFile)
 
 void gbGetHardwareType()
 {
-  gbCgbMode = 0;
-  gbSgbMode = 0;
-  if(gbRom[0x143] & 0x80) {
-    if((gbEmulatorType == 0) ||
-       gbEmulatorType == 1 ||
-       gbEmulatorType == 4) {
-      gbCgbMode = 1;
-    }
-  }
+	gbCgbMode = 0;
+	gbSgbMode = 0;
+	if(gbRom[0x143] & 0x80) {
+		if((gbEmulatorType == 0) ||
+				gbEmulatorType == 1 ||
+				gbEmulatorType == 4) {
+			gbCgbMode = 1;
+		}
+	}
 
-  if((gbCgbMode == 0 ) && (gbRom[0x146] == 0x03)) {
-    if(gbEmulatorType == 0 ||
-       gbEmulatorType == 2 ||
-       gbEmulatorType == 5)
-      gbSgbMode = 1;
-  }
+	if((gbCgbMode == 0 ) && (gbRom[0x146] == 0x03)) {
+		if(gbEmulatorType == 0 ||
+				gbEmulatorType == 2 ||
+				gbEmulatorType == 5)
+			gbSgbMode = 1;
+	}
 
-  gbHardware = 1; // GB
-  if (((gbCgbMode == 1) && (gbEmulatorType == 0)) || (gbEmulatorType == 1))
-    gbHardware = 2; // GBC
-  else if (((gbSgbMode == 1) && (gbEmulatorType == 0)) || (gbEmulatorType == 2) || (gbEmulatorType == 5))
-    gbHardware = 4; // SGB(2)
-  else if (gbEmulatorType == 4)
-    gbHardware = 8; // GBA
+	gbHardware = 1; // GB
+	if (((gbCgbMode == 1) && (gbEmulatorType == 0)) || (gbEmulatorType == 1))
+	{
+		gbHardware = 2; // GBC
+		SLOG("GBC HW");
+	}
+	else if (((gbSgbMode == 1) && (gbEmulatorType == 0)) || (gbEmulatorType == 2) || (gbEmulatorType == 5))
+	{
+		gbHardware = 4; // SGB(2)
+		SLOG("SGB HW");
+	}
+	else if (gbEmulatorType == 4)
+	{
+		gbHardware = 8; // GBA
+		SLOG("GBA, but hard selected from vbam.cfg");
+	}
+	else
+	{
+		SLOG("GB HW");
+	}
 
-  gbGBCColorType = 0;
-  if (gbHardware & 8) // If GBA is selected, choose the GBA default settings.
-    gbGBCColorType = 2;    // (0 = GBC, 1 = GBA, 2 = GBASP)
+	gbGBCColorType = 0;
+	if (gbHardware & 8) // If GBA is selected, choose the GBA default settings.
+		gbGBCColorType = 2;    // (0 = GBC, 1 = GBA, 2 = GBASP)
 }
 
 void gbReset()
@@ -4009,15 +4022,15 @@ bool gbReadSaveState(const char *name)
 bool gbWritePNGFile(const char *fileName)
 {
   if(gbBorderOn)
-    return utilWritePNGFile(fileName, GB_BWIDTH, GB_BHEIGHT, pix);
-  return utilWritePNGFile(fileName, GB_WIDTH, GB_HEIGHT, pix);
+    return utilWritePNGFile(fileName, gbWidth, gbHeight, pix);
+  return utilWritePNGFile(fileName, gbWidth, gbHeight, pix);
 }
 
 bool gbWriteBMPFile(const char *fileName)
 {
   if(gbBorderOn)
-    return utilWriteBMPFile(fileName, GB_BWIDTH, GB_BHEIGHT, pix);
-  return utilWriteBMPFile(fileName, GB_WIDTH, GB_HEIGHT, pix);
+    return utilWriteBMPFile(fileName, gbWidth, gbHeight, pix);
+  return utilWriteBMPFile(fileName, gbWidth, gbHeight, pix);
 }
 
 void gbCleanUp()

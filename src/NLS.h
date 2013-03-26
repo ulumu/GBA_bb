@@ -1,4 +1,4 @@
-#define N_(String) (String)
+#define N_(String) String
 
 #define MSG_UNSUPPORTED_VBA_SGM             1
 #define MSG_CANNOT_LOAD_SGM                 2

@@ -1,8 +1,22 @@
 VBAMpb BB10 Port of VBA-M GBA/GB/GBC emulator
 
-misc\roms\gba        place unzipped .gba games in here
+misc\roms\gba        place unzipped .gba games in here (sdcard or phone)
                      place gba.bin file here if you wish to play games...
 misc\gbaemu          configuration, saves and other stuff.
+
+v1.0.4.4
+
+- Bug fix SGB frame corruption
+- Bug fix STL100-1 and dev-alpha device black screen problem
+- Bug fix slow frame rate on some of the GBA games, especially pokemon
+- Bug fix GB/GBC game loading problem if first game loading is GBC
+- Bug fix GBA state loading/state saving problem if ROM is not first loading ROM
+- Known issue: for dev-alpha device, openGl option must be 1, otherwise there is corruption
+
+v1.0.4.3
+
+- Add log to file option
+- Add custom fragment shader code loading.
 
 v1.0.4.2
 

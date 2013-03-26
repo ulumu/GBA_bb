@@ -26,15 +26,17 @@ int gbWindowLine = -1;
 bool genericflashcardEnable = false;
 int gbCgbMode = 0;
 
-u16 gbColorFilter[32768];
+u16  gbColorFilter[32768];
 bool gbColorOption = false;
-int gbPaletteOption = 0;
-int gbEmulatorType = 0;
+int  gbPaletteOption = 0;
+int  gbEmulatorType = 0;
 bool gbBorderOn = true;
 bool gbBorderAutomatic = false;
-int gbBorderLineSkip = 160;
-int gbBorderRowSkip = 0;
-int gbBorderColumnSkip = 0;
-int gbDmaTicks = 0;
+int  gbBorderLineSkip = 160;
+int  gbBorderRowSkip = 0;
+int  gbBorderColumnSkip = 0;
+int  gbWidth = 0;
+int  gbHeight = 0;
+int  gbDmaTicks = 0;
 
 u8 (*gbSerialFunction)(u8) = NULL;

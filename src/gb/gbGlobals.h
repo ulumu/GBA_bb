@@ -67,6 +67,8 @@ extern bool genericflashcardEnable;
 extern int gbBorderLineSkip;
 extern int gbBorderRowSkip;
 extern int gbBorderColumnSkip;
+extern int gbWidth;
+extern int gbHeight;
 extern int gbDmaTicks;
 
 extern void gbRenderLine();

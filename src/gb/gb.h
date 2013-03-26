@@ -6,10 +6,8 @@
 #define N_FLAG 0x40
 #define Z_FLAG 0x80
 
-#define GB_BWIDTH  240
-#define GB_BHEIGHT 160
-#define GB_WIDTH   160
-#define GB_HEIGHT  144
+#define GB_ACTUAL_WIDTH   160
+#define GB_ACTUAL_HEIGHT  144
 
 typedef union {
   struct {

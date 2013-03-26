@@ -18,6 +18,7 @@ public:
 
 	void showAlert(const char *title, const char *content);
 	int  showPopuplistDialog(const char **list, int listCount, const char *title);
+	void showNotification(const char *content);
 
 private:
 	dialog_instance_t mDialog;

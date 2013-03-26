@@ -5,6 +5,31 @@
 
 #include <zlib.h>
 
+#ifdef __QNXNTO__
+#include <stdio.h>
+#include <sys/slog.h>
+#include <sys/slogcodes.h>
+#include "bbDialog.h"
+
+extern int   g_logtofile;
+extern FILE *g_flogfile;
+
+#undef SLOG
+#define SLOG(fmt, ...) \
+	if (g_logtofile)    \
+	{    fprintf(g_flogfile, "[GBA-LOG][%s:%d]:"fmt"\n", __FUNCTION__, __LINE__, ##__VA_ARGS__); fflush(g_flogfile); } \
+    else               \
+        slogf(_SLOG_SETCODE(_SLOGC_TEST+328, 0), _SLOG_DEBUG1, "[GBA-LOG][%s:%d]:"fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__)
+#else
+#define SLOG(fmt, ...)  \
+		if (g_logtofile)    \
+		{    fprintf(g_flogfile, "[GBA-LOG][%s:%d]:"fmt"\n", __FUNCTION__, __LINE__, ##__VA_ARGS__); fflush(g_flogfile); } \
+	    else               \
+             fprintf(stderr, "[GBA-LOG][%s:%d]:"fmt"\n", __FUNCTION__, __LINE__, ##__VA_ARGS__)
+#endif
+
+#define systemMessage(num, fmt, ...) SLOG(#num"|"fmt, ##__VA_ARGS__)
+
 class SoundDriver;
 
 struct EmulatedSystem {
@@ -49,7 +74,7 @@ extern bool systemReadJoypads();
 // return information about the given joystick, -1 for default joystick
 extern u32 systemReadJoypad(int);
 extern u32 systemGetClock();
-extern void systemMessage(int, const char *, ...);
+//extern void systemMessage(int, const char *, ...);
 extern void systemSetTitle(const char *);
 extern SoundDriver * systemSoundInit();
 extern void systemOnWriteDataToSoundBuffer(const u16 * finalWave, int length);

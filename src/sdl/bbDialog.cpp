@@ -7,6 +7,8 @@
 
 #include "bbDialog.h"
 #include <string.h>
+#include <sys/time.h>
+#include <time.h>
 
 bbDialog::bbDialog() {
 	mDialog = 0;
@@ -110,5 +112,35 @@ int bbDialog::showPopuplistDialog(const char **list, int listCount, const char *
 	}
 
 	return index;
+}
+
+
+void bbDialog::showNotification(const char *content)
+{
+	if (content)
+	{
+		dialog_create_toast(&mDialog);
+
+		if (content) dialog_set_toast_message_text(mDialog, content);
+
+		dialog_set_toast_position(mDialog, DIALOG_POSITION_TOP_CENTER);
+
+		dialog_show(mDialog);
+
+		while(1)
+		{
+			bps_event_t *event = 0;
+
+			bps_get_event(&event, -1);
+
+			if (event)
+			{
+				if (bps_event_get_domain(event) == dialog_get_domain())
+				{
+					break;
+				}
+			}
+		}
+	}
 }
 

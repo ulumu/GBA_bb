@@ -105,17 +105,6 @@ static vector<string> sdvecList;
 vector<string> sortedvecList;
 #endif
 
-#ifdef __QNXNTO__
-#include <sys/slog.h>
-#include <sys/slogcodes.h>
-#include "bbDialog.h"
-
-#undef SLOG
-#define SLOG(fmt, ...) slogf(_SLOG_SETCODE(_SLOGC_TEST+328, 0), _SLOG_DEBUG1, "[GBA-LOG][%s:%d]:"fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__)
-#else
-#define SLOG(fmt, ...) fprintf(stderr, "[GBA-LOG][%s:%d]:"fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__)
-#endif
-
 extern void remoteInit();
 extern void remoteCleanUp();
 extern void remoteStubMain();
@@ -123,6 +112,8 @@ extern void remoteStubSignal(int,int);
 extern void remoteOutput(const char *, u32);
 extern void remoteSetProtocol(int);
 extern void remoteSetPort(int);
+
+void sdlInitVideo();
 
 char g_runningFile_str[512];
 
@@ -176,12 +167,10 @@ int sdlPrintUsage = 0;
 int cartridgeType = 3;
 int captureFormat = 0;
 
-int g_openGL = 0;
+int g_openGL      = 0;
 int g_textureSize = 256;
-
-#ifndef NO_OGL
-static GLuint g_screenTexture = 0;
-#endif
+int g_logtofile   = 0;
+FILE *g_flogfile  = NULL;
 
 u8 *filterPix = 0;
 
@@ -285,9 +274,6 @@ u32  screenMessageTime = 0;
 
 char *arg0;
 
-static u8 *screen;
-unsigned int destPitch;
-
 int g_LOADING_ROM;
 extern bool stopState;  // cpu loop control
 
@@ -314,17 +300,17 @@ const char *vs =
 
 const char *fs_basic =
 		"uniform lowp sampler2D u_sampler;\n"
-		"uniform vec2  u_resolution;\n"
+		"uniform lowp vec2  u_resolution;\n"
 		"varying mediump vec2 v_texcoord;\n"
 		"void main()\n"
 		"{\n"
 		"    gl_FragColor = texture2D(u_sampler, v_texcoord);\n"
 		"}\n";
 
-const char *fs_smooth =
-    "uniform sampler2D u_sampler; // Texture0\n"
-	"uniform vec2  u_resolution;\n"
-    "varying vec2  v_texcoord;\n"
+const char *fs_fxaa =
+    "uniform lowp sampler2D u_sampler; // Texture0\n"
+	"uniform lowp    vec2  u_resolution;\n"
+    "varying mediump vec2  v_texcoord;\n"
     "\n"
     "#define FxaaInt2 ivec2\n"
     "#define FxaaFloat2 vec2\n"
@@ -336,44 +322,44 @@ const char *fs_smooth =
     "\n"
 	"void main() \n"
 	"{ \n"
-	"    vec3 c;\n"
+	"    lowp vec3 c;\n"
 	"    lowp float lum;"
-	"    vec2 rcpFrame = 1.0/u_resolution;\n"
+	"    mediump vec2 rcpFrame = 1.0/u_resolution;\n"
     "/*---------------------------------------------------------*/\n"
     "/*---------------------------------------------------------*/\n"
-    "    vec3 rgbNW = texture2D(u_sampler, v_texcoord + (FxaaFloat2(-1.0,-1.0) * rcpFrame.xy)).xyz;\n"
-    "    vec3 rgbNE = texture2D(u_sampler, v_texcoord + (FxaaFloat2( 1.0,-1.0) * rcpFrame.xy)).xyz;\n"
-    "    vec3 rgbSW = texture2D(u_sampler, v_texcoord + (FxaaFloat2(-1.0, 1.0) * rcpFrame.xy)).xyz;\n"
-    "    vec3 rgbSE = texture2D(u_sampler, v_texcoord + (FxaaFloat2( 1.0, 1.0) * rcpFrame.xy)).xyz;\n"
-    "    vec3 rgbM  = texture2D(u_sampler, v_texcoord).xyz;\n"
+    "    lowp vec3 rgbNW = texture2D(u_sampler, v_texcoord + (FxaaFloat2(-1.0,-1.0) * rcpFrame.xy)).xyz;\n"
+    "    lowp vec3 rgbNE = texture2D(u_sampler, v_texcoord + (FxaaFloat2( 1.0,-1.0) * rcpFrame.xy)).xyz;\n"
+    "    lowp vec3 rgbSW = texture2D(u_sampler, v_texcoord + (FxaaFloat2(-1.0, 1.0) * rcpFrame.xy)).xyz;\n"
+    "    lowp vec3 rgbSE = texture2D(u_sampler, v_texcoord + (FxaaFloat2( 1.0, 1.0) * rcpFrame.xy)).xyz;\n"
+    "    lowp vec3 rgbM  = texture2D(u_sampler, v_texcoord).xyz;\n"
     "/*---------------------------------------------------------*/\n"
-    "    vec3 luma = vec3(0.299, 0.587, 0.114);\n"
-    "    float lumaNW = dot(rgbNW, luma);\n"
-    "    float lumaNE = dot(rgbNE, luma);\n"
-    "    float lumaSW = dot(rgbSW, luma);\n"
-    "    float lumaSE = dot(rgbSE, luma);\n"
-    "    float lumaM  = dot(rgbM,  luma);\n"
+    "    lowp vec3 luma = vec3(0.299, 0.587, 0.114);\n"
+    "    lowp float lumaNW = dot(rgbNW, luma);\n"
+    "    lowp float lumaNE = dot(rgbNE, luma);\n"
+    "    lowp float lumaSW = dot(rgbSW, luma);\n"
+    "    lowp float lumaSE = dot(rgbSE, luma);\n"
+    "    lowp float lumaM  = dot(rgbM,  luma);\n"
     "/*---------------------------------------------------------*/\n"
-    "    float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));\n"
-    "    float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));\n"
+    "    lowp float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));\n"
+    "    lowp float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));\n"
     "/*---------------------------------------------------------*/\n"
-    "    vec2 dir; \n"
+    "    lowp vec2 dir; \n"
     "    dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));\n"
     "    dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));\n"
     "/*---------------------------------------------------------*/\n"
-    "    float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * (0.25 * FXAA_REDUCE_MUL), FXAA_REDUCE_MIN);\n"
-    "    float rcpDirMin = 1.0/(min(abs(dir.x), abs(dir.y)) + dirReduce);\n"
+    "    lowp float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * (0.25 * FXAA_REDUCE_MUL), FXAA_REDUCE_MIN);\n"
+    "    lowp float rcpDirMin = 1.0/(min(abs(dir.x), abs(dir.y)) + dirReduce);\n"
     "    dir = min(FxaaFloat2( FXAA_SPAN_MAX,  FXAA_SPAN_MAX), \n"
     "          max(FxaaFloat2(-FXAA_SPAN_MAX, -FXAA_SPAN_MAX), \n"
     "          dir * rcpDirMin)) * rcpFrame.xy;\n"
     "/*--------------------------------------------------------*/\n"
-    "    vec3 rgbA = (1.0/2.0) * (\n"
+    "    lowp vec3 rgbA = (1.0/2.0) * (\n"
     "        texture2D(u_sampler, v_texcoord.xy + dir * (1.0/3.0 - 0.5)).xyz +\n"
     "        texture2D(u_sampler, v_texcoord.xy + dir * (2.0/3.0 - 0.5)).xyz);\n"
-    "    vec3 rgbB = rgbA * (1.0/2.0) + (1.0/4.0) * (\n"
+    "    lowp vec3 rgbB = rgbA * (1.0/2.0) + (1.0/4.0) * (\n"
     "        texture2D(u_sampler, v_texcoord.xy + dir * (0.0/3.0 - 0.5)).xyz +\n"
     "        texture2D(u_sampler, v_texcoord.xy + dir * (3.0/3.0 - 0.5)).xyz);\n"
-    "    float lumaB = dot(rgbB, luma);\n"
+    "    lowp float lumaB = dot(rgbB, luma);\n"
     "    if((lumaB < lumaMin) || (lumaB > lumaMax))\n"
 	"      c = rgbA;\n"
 	"    else\n"
@@ -385,11 +371,12 @@ static int sdlOpenGLInit(int width, int height)
 {
 	GLint  status;
 	GLuint v, f, id;
-	GLchar log[256];
-	const char *fs;
+	GLchar log[8192];
+	char  *fs;
 	GLint  texfilter;
 
-	fs = fs_smooth;
+	if (shader)
+		return 1;
 
 	v = glCreateShader(GL_VERTEX_SHADER);
 	if (!v) {
@@ -400,8 +387,8 @@ static int sdlOpenGLInit(int width, int height)
 	glCompileShader(v);
 	glGetShaderiv(v, GL_COMPILE_STATUS, &status);
 	if (GL_FALSE == status) {
-		glGetShaderInfoLog(v, 256, NULL, log);
-		SLOG("Failed to compile vertex shader: %s", log);
+		glGetShaderInfoLog(v, sizeof(log), NULL, log);
+		SLOG("Failed to compile vertex shader:\n %s", log);
 		goto error2;
 	}
 
@@ -410,13 +397,84 @@ static int sdlOpenGLInit(int width, int height)
 		SLOG("Failed to create fragment shader");
 		goto error2;
 	}
+
+	switch (g_openGL)
+	{
+	case 1:
+		fs        = (char *)fs_basic;
+		texfilter = GL_NEAREST;
+		SLOG("Basic fragment shader used");
+		break;
+	case 2:
+		fs        = (char *)fs_fxaa;
+		texfilter = GL_LINEAR;
+		SLOG("FXAA fragment shader used");
+		break;
+	case 3:
+	{
+		int  len;
+		FILE *file = fopen(SYSCONFDIR"/custom.fs", "rb");
+		if (file)
+		{
+			fseek(file, 0, SEEK_END);
+			len = ftell(file);
+			fseek(file, 0, SEEK_SET);
+			fs = (char *)calloc(1, len+1);
+			if (fs == NULL)
+			{
+				SLOG("Fail allocate custom fragment shader code memory, use default");
+				fs        = (char *)fs_basic;
+				texfilter = GL_NEAREST;
+				g_openGL  = 1;
+			}
+			else
+			{
+				fread(fs, sizeof(char), len, file);
+				texfilter = GL_LINEAR;
+				SLOG("Custom fragment shader used");
+			}
+		}
+		else
+		{
+			SLOG("Cannot open %s, use default", SYSCONFDIR"/custom.fs");
+			fs        = (char *)fs_basic;
+			texfilter = GL_NEAREST;
+			g_openGL  = 1;
+		}
+		break;
+	}
+	default:
+		SLOG("Unsuppport OpenGL option, use default");
+		fs        = (char *)fs_basic;
+		texfilter = GL_NEAREST;
+		g_openGL  = 1;
+		break;
+	}
+
 	glShaderSource(f, 1, &fs, 0);
 	glCompileShader(f);
 	glGetShaderiv(f, GL_COMPILE_STATUS, &status);
 	if (GL_FALSE == status) {
-		glGetShaderInfoLog(f, 256, NULL, log);
-		SLOG("Failed to compile fragment shader: %s", log);
-		goto error3;
+		glGetShaderInfoLog(f, sizeof(log), NULL, log);
+		SLOG("Failed to compile fragment shader:\n %s", log);
+
+		if (g_openGL == 3)
+		{
+			free (fs);
+		}
+
+		// fallback to basic fragment shader
+		g_openGL  = 1;
+		texfilter = GL_LINEAR;
+		fs = (char *)fs_basic;
+		glShaderSource(f, 1, &fs, 0);
+		glCompileShader(f);
+		glGetShaderiv(f, GL_COMPILE_STATUS, &status);
+		if (GL_FALSE == status) {
+			glGetShaderInfoLog(f, sizeof(log), NULL, log);
+			SLOG("Failed to compile basic fragment shader:\n %s", log);
+			goto error3;
+		}
 	}
 
 	id = glCreateProgram();
@@ -430,13 +488,14 @@ static int sdlOpenGLInit(int width, int height)
 
 	glGetProgramiv(id, GL_LINK_STATUS, &status);
 	if (GL_FALSE == status) {
-		glGetProgramInfoLog(id, 256, NULL, log);
-		SLOG("Failed to link shader program: %s\n", log);
+		glGetProgramInfoLog(id, sizeof(log), NULL, log);
+		SLOG("Failed to link shader program:\n %s", log);
 		goto error4;
 	}
 
 	glDeleteShader(v);
 	glDeleteShader(f);
+	if (g_openGL == 3) free(fs);
 
 	shader = id;
 	glUseProgram(id);
@@ -445,11 +504,6 @@ static int sdlOpenGLInit(int width, int height)
 
 	positionAttrib = glGetAttribLocation(id, "a_position");
 	texcoordAttrib = glGetAttribLocation(id, "a_texcoord");
-
-	if (g_openGL == 2)
-		texfilter = GL_LINEAR;
-	else
-		texfilter = GL_NEAREST;
 
 	glActiveTexture(GL_TEXTURE0);
 	glGenTextures(2, textures);
@@ -471,6 +525,7 @@ error4:
 	glDeleteProgram(id);
 error3:
 	glDeleteShader(f);
+	if (g_openGL == 3) free(fs);
 error2:
 	glDeleteShader(v);
 error1:
@@ -497,65 +552,6 @@ void updateSurface(u32 w, u32 h, u8 *pixels)
 
 
 //-------------------------------------------------------------------------------------------------
-
-void showAlert(int size)
-{
-	if (size == 0) {
-		dialog_instance_t alert_dialog = 0;
-		dialog_request_events(0);    //0 indicates that all events are requested
-		if (dialog_create_alert(&alert_dialog) != BPS_SUCCESS) {
-			SLOG( "Failed to create alert dialog.");
-			//return EXIT_FAILURE;
-		}
-		dialog_set_title_text(alert_dialog, "GBAEMU Error Report");
-		if (dialog_set_alert_message_text(alert_dialog, "ERROR: You do not have any ROMS! Add GBA BIOS & ROMS to:\"shared/misc/roms/gba\"")
-				!= BPS_SUCCESS) {
-			SLOG( "Failed to set alert dialog message text.");
-			dialog_destroy(alert_dialog);
-			alert_dialog = 0;
-			//return EXIT_FAILURE;
-		}
-
-		if (dialog_add_button(alert_dialog, "OK", true, 0, true)
-				!= BPS_SUCCESS) {
-			SLOG( "Failed to add button to alert dialog.");
-			dialog_destroy(alert_dialog);
-			alert_dialog = 0;
-			//return EXIT_FAILURE;
-		}
-
-		if (dialog_show(alert_dialog) != BPS_SUCCESS) {
-			SLOG( "Failed to show alert dialog.");
-			dialog_destroy(alert_dialog);
-			alert_dialog = 0;
-			//return EXIT_FAILURE;
-		}
-
-		while (1) {
-			bps_event_t *event = NULL;
-			bps_get_event(&event, -1);    // -1 means that the function waits
-			// for an event before returning
-
-			if (event) {
-				if (bps_event_get_domain(event) == dialog_get_domain()) {
-
-					int selectedIndex =
-							dialog_event_get_selected_index(event);
-					const char* label =
-							dialog_event_get_selected_label(event);
-					const char* context =
-							dialog_event_get_selected_context(event);
-
-					exit(-1);
-				}
-			}
-		}
-
-		if (alert_dialog) {
-			dialog_destroy(alert_dialog);
-		}
-	}
-}
 
 void GetRomDirListing(vector<string> &vsList, const char *dpath )
 {
@@ -640,13 +636,59 @@ vector<string> sortAlpha(vector<string> sortThis)
 	return sortThis;
 }
 
+
+//
+// Frame size setting: DO NOT CHANGE
+//
+//  GBA    -  240 x 160
+//  GBC/GB -  240 x 160 including border
+//  SGB    -  256 x 224 including border
+//
+void initGbFrameSize(void)
+{
+	if(cartridgeType == 0) {
+		g_srcWidth  = 240;
+		g_srcHeight = 160;
+		systemFrameSkip = frameSkip;
+	} else if (cartridgeType == 1) {
+		if(gbBorderOn) {
+			if (gbSgbMode)
+			{
+				gbWidth            = 256;
+				gbHeight           = 224;
+			}
+			else
+			{
+				gbWidth            = 240;
+				gbHeight           = 160;
+			}
+			g_srcWidth         = gbWidth;
+			g_srcHeight        = gbHeight;
+			gbBorderLineSkip   = gbWidth;
+			gbBorderColumnSkip = (gbWidth  - GB_ACTUAL_WIDTH)/2;
+			gbBorderRowSkip    = (gbHeight - GB_ACTUAL_HEIGHT)/2;
+		} else {
+			g_srcWidth         = GB_ACTUAL_WIDTH;
+			g_srcHeight        = GB_ACTUAL_HEIGHT;
+			gbBorderLineSkip   = GB_ACTUAL_WIDTH;
+			gbBorderColumnSkip = 0;
+			gbBorderRowSkip    = 0;
+		}
+		systemFrameSkip = gbFrameSkip;
+	} else {
+		g_srcWidth  = 320;
+		g_srcHeight = 240;
+	}
+}
+
 int AutoLoadRom(void)
 {
-	static int load_in_progress = 0;
-	string    romfilename;
-	bbDialog *dialog;
-	const char ** list = 0;
+	static int    load_in_progress = 0;
+	string        romfilename;
+	bbDialog     *dialog;
+	const char  **list = 0;
 	int           count;
+	bool          curBiosUsage = useBios;
 
 	extern void sdlWriteBattery();
 	extern void sdlReadBattery();
@@ -725,10 +767,10 @@ int AutoLoadRom(void)
 
 	IMAGE_TYPE type = utilFindType(filename);
 
-	SLOG("'%s' type = %d\n",filename, type);
+	SLOG("'%s' ROM type = %d\n",filename, type);
 
 	if(type == IMAGE_UNKNOWN) {
-		systemMessage(0, "Unknown file type %s", filename);
+		systemMessage(MSG_CANNOT_OPEN_FILE, "Unknown file type %s", filename);
 		g_LOADING_ROM    = 0;
 		stopState        = false;
 		load_in_progress = 0;
@@ -738,7 +780,6 @@ int AutoLoadRom(void)
 		return false;
 	}
 	cartridgeType = (int)type;
-
 
 	if (cartridgeType == IMAGE_GB)
 	{
@@ -794,6 +835,9 @@ int AutoLoadRom(void)
 		CPUReset();
 	}
 
+	initGbFrameSize();
+	sdlInitVideo();
+
 	g_LOADING_ROM    = 0;
 	stopState        = false;
 	load_in_progress = 0;
@@ -819,70 +863,17 @@ void UpdateRomList(void)
 	{
 		bbDialog *dialog = new (bbDialog);
 
-		dialog->showAlert("GBAEMU Error Report", "ERROR: You do not have any ROMS! Add GBA BIOS & ROMS to:\"misc/roms/gba\"");
-
-		delete dialog;
+		if (dialog)
+		{
+			dialog->showAlert("GBAEMU Error Report", "ERROR: You do not have any ROMS! Add GBA BIOS & ROMS to:\"misc/roms/gba\"");
+			delete dialog;
+		}
 
 		exit(-1);
 	}
 }
 
 
-bool RomLoad( const char *fname)
-{
-	int failed;
-	int size = 0;
-	static int load_in_progress = 0;
-
-	if(load_in_progress)
-		return false;
-
-	if(!fname)
-		return false;
-
-	g_LOADING_ROM = 1;
-	stopState = true;
-
-
-	load_in_progress = 1;
-	CPUCleanUp();         // free dynamic allocated mem etc.
-	SLOG("RomLoad: CPULoadRom\n");
-
-	if( (size=CPULoadRom(fname)) == 0)
-	{
-		SLOG("RomLoad: ERROR loading %s\n",fname);
-		g_LOADING_ROM = 0;
-		load_in_progress = false;
-		return false;
-	}
-
-	// sdlApplyPerImagePreferences();
-	doMirroring(mirroringEnable);
-
-	cartridgeType = 0;
-	emulator = GBASystem;
-
-	SLOG("RomLoad: CPUInit '%s' %d\n", biosFileName, useBios);
-
-	stopState = false;
-	CPUInit(biosFileName, 1);
-
-	/*
-int patchnum;
-for (patchnum = 0; patchnum < sdl_patch_num; patchnum++) {
-SLOG( "Trying patch %s%s\n", sdl_patch_names[patchnum],
-  applyPatch(sdl_patch_names[patchnum], &rom, &size) ? " [success]" : "");
-}
-	 */
-	SLOG("RomLoad: CPUReset\n");
-
-	CPUReset();
-	SLOG("RomLoad: ok\n");
-	load_in_progress = 0;
-
-
-	return true;
-}
 
 int sdlPreparedCheats	= 0;
 #define MAX_CHEATS 100
@@ -1326,6 +1317,10 @@ void sdlReadPreferences(FILE *f)
 			inputSetKeymap(PAD_4, KEY_BUTTON_AUTO_B, sdlFromHex(value));
 		} else if(!strcmp(key, "openGL")) {
 			g_openGL = sdlFromHex(value);
+		} else if(!strcmp(key, "logToFile")) {
+			g_logtofile = sdlFromHex(value);
+			g_flogfile = fopen(SYSCONFDIR"/logs", "w");
+			if (g_flogfile == NULL) g_logtofile = 0;
 		} else if(!strcmp(key, "Motion_Left")) {
 			inputSetMotionKeymap(KEY_LEFT, sdlFromHex(value));
 		} else if(!strcmp(key, "Motion_Right")) {
@@ -1599,15 +1594,18 @@ static char * sdlStateName(int num)
 	static char stateName[2048];
 
 	if(saveDir[0])
-		sprintf(stateName, "%s/%s%d.sgm", saveDir, sdlGetFilename(filename),
-				num+1);
+		sprintf(stateName, "%s/%s%d.sgm", saveDir, sdlGetFilename(filename), num+1);
 	else if (homeDir)
 		sprintf(stateName, "%s/%s/%s%d.sgm", homeDir, DOT_DIR, sdlGetFilename(filename), num + 1);
 	else
 		sprintf(stateName,"%s%d.sgm", filename, num+1);
 
+	SLOG("stateName:%s", stateName);
+
 	return stateName;
 }
+
+static int sdlStateWriteFlag = 0;
 
 void sdlWriteState(int num)
 {
@@ -1616,19 +1614,12 @@ void sdlWriteState(int num)
 	stateName = sdlStateName(num);
 
 	if(emulator.emuWriteState)
+	{
+		sdlStateWriteFlag = 1;
 		emulator.emuWriteState(stateName);
+	}
 
-	// now we reuse the stateName buffer - 2048 bytes fit in a lot
-	if (num == SLOT_POS_LOAD_BACKUP)
-	{
-		sprintf(stateName, "Current state backed up to %d", num+1);
-		systemScreenMessage(stateName);
-	}
-	else if (num>=0)
-	{
-		sprintf(stateName, "Wrote state %d", num+1);
-		systemScreenMessage(stateName);
-	}
+	systemScreenMessage("State Backup");
 
 	systemDrawScreen();
 }
@@ -1638,24 +1629,18 @@ void sdlReadState(int num)
 	char * stateName;
 
 	stateName = sdlStateName(num);
+
 	if(emulator.emuReadState)
 		emulator.emuReadState(stateName);
 
-	if (num == SLOT_POS_LOAD_BACKUP)
+	if (sdlStateWriteFlag == 0)
 	{
-		sprintf(stateName, "Last load UNDONE");
-	} else
-		if (num == SLOT_POS_SAVE_BACKUP)
-		{
-			sprintf(stateName, "Last save UNDONE");
-		}
-		else
-		{
-			sprintf(stateName, "Loaded state %d", num+1);
-		}
-	systemScreenMessage(stateName);
+		systemScreenMessage("State Loaded");
+	}
 
 	systemDrawScreen();
+
+	sdlStateWriteFlag = 0;
 }
 
 /*
@@ -1713,9 +1698,11 @@ void sdlWriteBattery()
 	else
 		sprintf(buffer, "%s.sav", filename);
 
+	SLOG("Save name: %s", buffer);
+
 	emulator.emuWriteBattery(buffer);
 
-	systemScreenMessage("battery save");
+	SLOG("Battery save");
 
 }
 
@@ -1732,10 +1719,12 @@ void sdlReadBattery()
 
 	bool res = false;
 
+	SLOG("Save name: %s", buffer);
+
 	res = emulator.emuReadBattery(buffer);
 
 	if(res)
-		systemScreenMessage("Loaded battery");
+		SLOG("Loaded battery");
 }
 
 void sdlReadDesktopVideoMode() {
@@ -1776,7 +1765,7 @@ void sdlInitVideo() {
 
 	if(g_surface == NULL) {
 		SLOG("g_surface is NULL!\n");
-		systemMessage(0, "Failed to set video mode");
+		SLOG("Failed to set video mode");
 		SDL_Quit();
 		exit(-1);
 	}
@@ -1828,7 +1817,11 @@ void sdlInitVideo() {
 		g_destPitch = (systemColorDepth >> 3) * g_destWidth;
 		filterPix   = (u8 *)calloc(1, (systemColorDepth >> 3) * g_destWidth * g_destHeight);
 	}
+	else
 #endif
+	{
+		g_destPitch = g_surface->pitch;
+	}
 
 }
 
@@ -1962,6 +1955,7 @@ static void sdlHandleSavestateKey(int num, int shifted)
 
 void sdlPollEvents()
 {
+	bbDialog dialog;
 	SDL_Event event;
 	while(SDL_PollEvent(&event)) {
 		switch(event.type) {
@@ -2056,11 +2050,11 @@ void sdlPollEvents()
 					change_rewind( (rewindTopPos - rewindPos) * ((rewindTopPos>rewindPos) ? +1:-1) );
 				break;
 			case SDLK_e:
-				if(!(event.key.keysym.mod & MOD_NOCTRL) &&
-						(event.key.keysym.mod & KMOD_CTRL)) {
+//				if(!(event.key.keysym.mod & MOD_NOCTRL) &&
+//						(event.key.keysym.mod & KMOD_CTRL)) {
 					cheatsEnabled = !cheatsEnabled;
 					systemConsoleMessage(cheatsEnabled?"Cheats on":"Cheats off");
-				}
+//				}
 				break;
 
 			case SDLK_o:
@@ -2071,13 +2065,13 @@ void sdlPollEvents()
 					// restore saved state
 					soundSetEnable( sdlSoundToggledOff );
 					sdlSoundToggledOff = 0;
-					systemConsoleMessage("Sound toggled on");
+					systemConsoleMessage("Sound ON");
 				}
 				else
 				{ // was on
 					sdlSoundToggledOff = soundGetEnable();
 					soundSetEnable( 0 );
-					systemConsoleMessage("Sound toggled off");
+					systemConsoleMessage("Sound OFF");
 					if (!sdlSoundToggledOff) {
 						sdlSoundToggledOff = 0x3ff;
 					}
@@ -2518,10 +2512,6 @@ int main(int argc, char **argv)
 	gb_effects_config.surround = false;
 	gb_effects_config.enabled = false;
 
-	struct stat s;
-
-
-
 #ifdef __QNXNTO__
 	// Get home dir
 
@@ -2529,11 +2519,11 @@ int main(int argc, char **argv)
 	mkdir("/accounts/1000/shared/misc/gbaemu", 0777);
 	mkdir("/accounts/1000/shared/misc/gbaemu/savegames", 0777);
 
-	char *vbaPath = "/accounts/1000/shared/misc/gbaemu";
+	const char *vbaPath = "/accounts/1000/shared/misc/gbaemu";
 	mkdir("/accounts/1000/shared/misc/roms/gba",0777);
 	mkdir(vbaPath,0777);
 
-	homeDir = vbaPath;
+	homeDir = (char *)vbaPath;
 	useBios = true;
 	strcpy(biosFileName, SYSROMDIR"gba.bin");
 
@@ -2759,9 +2749,6 @@ int main(int argc, char **argv)
 	rtcEnable(sdlRtcEnable ? true : false);
 	agbPrintEnable(sdlAgbPrint ? true : false);
 
-
-	// FIXME: Rom section here?
-
 	for(int i = 0; i < 24;) {
 		systemGbPalette[i++] = (0x1f) | (0x1f << 5) | (0x1f << 10);
 		systemGbPalette[i++] = (0x15) | (0x15 << 5) | (0x15 << 10);
@@ -2781,6 +2768,7 @@ int main(int argc, char **argv)
 
 		list = (const char**)malloc(sortedvecList.size()*sizeof(char*));
 
+		// ROM selection
 		if (list)
 		{
 			for(count = 0; count < sortedvecList.size(); count++)
@@ -2805,7 +2793,7 @@ int main(int argc, char **argv)
 		}
 		else
 		{
-			SLOG("Out of Memory", "Fail creating ROM list, quiting!!");
+			SLOG("Out of Memory, Fail creating ROM list, quiting!!");
 			return -1;
 		}
 
@@ -2867,7 +2855,7 @@ int main(int argc, char **argv)
 		SLOG("'%s' type = %d\n",szFile, type);
 
 		if(type == IMAGE_UNKNOWN) {
-			systemMessage(0, "Unknown file type %s", szFile);
+			systemMessage(MSG_UNKNOWN_CARTRIDGE_TYPE, "Unknown file type %s", szFile);
 			exit(-1);
 		}
 		cartridgeType = (int)type;
@@ -2925,7 +2913,7 @@ int main(int argc, char **argv)
 
 		if(failed)
 		{
-			systemMessage(0, "Failed to load file %s", szFile);
+			systemMessage(MSG_UNKNOWN_CARTRIDGE_TYPE, "Failed to load file %s", szFile);
 		}
 
 	} else {
@@ -2961,12 +2949,12 @@ int main(int argc, char **argv)
 	// int flags = SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER;
 
 	if(SDL_Init(flags)) {
-		systemMessage(0, "Failed to init SDL: %s", SDL_GetError());
+		SLOG("Failed to init SDL: %s", SDL_GetError());
 		exit(-1);
 	}
 
 	if(SDL_InitSubSystem(SDL_INIT_JOYSTICK)) {
-		systemMessage(0, "Failed to init joystick support: %s", SDL_GetError());
+		SLOG("Failed to init joystick support: %s", SDL_GetError());
 	}
 
 #if WITH_LIRC
@@ -2974,41 +2962,22 @@ int main(int argc, char **argv)
 #endif
 	inputInitJoysticks();
 
-	if(cartridgeType == 0) {
-		g_srcWidth             = 240;
-		g_srcHeight            = 160;
-		systemFrameSkip = frameSkip;
-	} else if (cartridgeType == 1) {
-		if(gbBorderOn) {
-			g_srcWidth         = GB_BWIDTH;
-			g_srcHeight        = GB_BHEIGHT;
-			gbBorderLineSkip   = GB_BWIDTH;
-			gbBorderColumnSkip = (GB_BWIDTH  - GB_WIDTH)/2;
-			gbBorderRowSkip    = (GB_BHEIGHT - GB_HEIGHT)/2;
-		} else {
-			g_srcWidth         = GB_WIDTH;
-			g_srcHeight        = GB_HEIGHT;
-			gbBorderLineSkip   = GB_WIDTH;
-			gbBorderColumnSkip = 0;
-			gbBorderRowSkip    = 0;
-		}
-		systemFrameSkip = gbFrameSkip;
-	} else {
-		g_srcWidth  = 320;
-		g_srcHeight = 240;
-	}
-
+	initGbFrameSize();
 
 	SLOG("initialize video mode ...");
 	sdlReadDesktopVideoMode();
 	sdlInitVideo();
 
-	SLOG("initialize filter ...");
 
+	SLOG("initialize filter ...");
 	filterFunction = initFilter(filter, systemColorDepth, g_srcWidth);
-	if (!filterFunction) {
-		SLOG("Unable to init filter '%s'", getFilterName(filter));
-		// exit(-1);
+	if (!filterFunction)
+	{
+		bbDialog dialog;
+
+		dialog.showNotification("Unable to initialize Filter, quiting!!");
+
+		return -1;
 	}
 
 	if(systemColorDepth == 15)
@@ -3041,6 +3010,11 @@ int main(int argc, char **argv)
 	// now we can enable cheats?
 	SLOG("enable cheats ...\n");
 
+	// hard code test cheats for Metroid Fusion testing
+//	sdlPreparedCheatCodes[sdlPreparedCheats++] = "00D0A839 17FE";
+//	sdlPreparedCheatCodes[sdlPreparedCheats++] = "93C80FA3 DF77";
+//	sdlPreparedCheatCodes[sdlPreparedCheats++] = "EEEE8A9B 6B5C";
+//	sdlPreparedCheatCodes[sdlPreparedCheats++] = "5EACC94A 3F4A";
 	{
 		int i;
 		for (i=0; i<sdlPreparedCheats; i++) {
@@ -3064,7 +3038,6 @@ int main(int argc, char **argv)
 	}
 
 	SLOG("GO emu loop!\n");
-	systemMessage(1,"froggyface tbotz.blogspot.com");
 
 	while(emulating) {
 		if(!paused && active) {
@@ -3126,6 +3099,8 @@ if(mouseCounter) {
 #endif
 
 	SDL_Quit();
+	if (g_flogfile) fclose(g_flogfile);
+
 	return 0;
 }
 
@@ -3141,6 +3116,7 @@ int WinMain()
 }
 #endif
 
+#if 0
 void systemMessage(int num, const char *msg, ...)
 {
 	char buffer[SYSMSG_BUFFER_SIZE*2];
@@ -3152,6 +3128,7 @@ void systemMessage(int num, const char *msg, ...)
 	SLOG( "%s\n", buffer);
 	va_end(valist);
 }
+#endif
 
 void drawScreenMessage(u8 *screen, int pitch, int x, int y, unsigned int duration)
 {
@@ -3186,22 +3163,32 @@ void drawSpeed(u8 *screen, int pitch, int x, int y)
 
 void systemDrawScreen()
 {
-	u8 *pixels = (u8*) g_surface->pixels;
+	u8 *srcbuf = (u8 *)pix;
+	u8 *dstbuf = (u8 *)g_surface->pixels;
 
 #ifndef NO_OGL
 	if (g_openGL)
-		pixels = filterPix;
+		dstbuf = filterPix;
 #endif
 
-	if (NULL == pixels)
+	if (NULL == dstbuf)
+	{
+		SLOG("NULL dst buffer");
 		return;
+	}
 
 	/*
 	if (ifbFunction)
 	    ifbFunction(pix + g_srcPitch, g_srcPitch, g_srcWidth, g_srcHeight);
 	 */
-	filterFunction(pix + g_srcPitch, g_srcPitch, delta, pixels,
-			g_destPitch, g_srcWidth, g_srcHeight);
+	filterFunction(
+			srcbuf + g_srcPitch,    // source buffer
+			g_srcPitch, 			// source buffer pitch
+			delta, 					// delta buffer
+			dstbuf,					// destination buffer
+			g_destPitch, 			// destination buffer pitch
+			g_srcWidth, 			// source width
+			g_srcHeight);			// source height
 
 	//  drawScreenMessage(screen, destPitch, 10, g_destHeight - 20, 3000);
 
@@ -3211,7 +3198,7 @@ void systemDrawScreen()
 #ifndef NO_OGL
 	if (g_openGL) {
 #ifdef __PLAYBOOK__
-		updateSurface(g_destWidth, g_destHeight, pixels);
+		updateSurface(g_destWidth, g_destHeight, dstbuf);
 #else
 		glBegin(GL_TRIANGLE_STRIP);
 		glTexCoord2f(0.0f, 0.0f);
@@ -3266,6 +3253,8 @@ void systemFrame()
 {
 }
 
+#define MAX_SKIP_FRAME 2
+
 void system10Frames(int rate)
 {
 	u32 time = systemGetClock();
@@ -3287,12 +3276,12 @@ void system10Frames(int rate)
 		} else {
 			if(speed  < 80)
 				frameskipadjust -= (90 - speed)/5;
-			else if(systemFrameSkip < 9)
+			else if(systemFrameSkip < MAX_SKIP_FRAME)
 				frameskipadjust--;
 
 			if(frameskipadjust <= -2) {
 				frameskipadjust += 2;
-				if(systemFrameSkip < 9)
+				if(systemFrameSkip < MAX_SKIP_FRAME)
 					systemFrameSkip++;
 			}
 		}
@@ -3350,25 +3339,11 @@ void systemGbPrint(u8 *data,int len,int pages,int feed,int palette, int contrast
 {
 }
 
-/* xKiv: added timestamp */
 void systemConsoleMessage(const char *msg)
 {
-	time_t now_time;
-	struct tm now_time_broken;
+	bbDialog dialog;
 
-	now_time		= time(NULL);
-	now_time_broken	= *(localtime( &now_time ));
-	fprintf(
-			stdout,
-			"%02d:%02d:%02d %02d.%02d.%4d: %s\n",
-			now_time_broken.tm_hour,
-			now_time_broken.tm_min,
-			now_time_broken.tm_sec,
-			now_time_broken.tm_mday,
-			now_time_broken.tm_mon + 1,
-			now_time_broken.tm_year + 1900,
-			msg
-	);
+	dialog.showNotification(msg);
 }
 
 void systemScreenMessage(const char *msg)
@@ -3402,11 +3377,11 @@ bool systemPauseOnFrame()
 
 void systemGbBorderOn()
 {
-	g_srcWidth         = GB_BWIDTH;
-	g_srcHeight        = GB_BHEIGHT;
-	gbBorderLineSkip   = GB_BWIDTH;
-	gbBorderColumnSkip = (GB_BWIDTH  - GB_WIDTH)/2;
-	gbBorderRowSkip    = (GB_BHEIGHT - GB_HEIGHT)/2;
+	g_srcWidth         = gbWidth;
+	g_srcHeight        = gbHeight;
+	gbBorderLineSkip   = gbWidth;
+	gbBorderColumnSkip = (gbWidth  - GB_ACTUAL_WIDTH)/2;
+	gbBorderRowSkip    = (gbHeight - GB_ACTUAL_HEIGHT)/2;
 
 	sdlInitVideo();
 

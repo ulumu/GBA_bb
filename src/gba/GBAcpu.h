@@ -67,7 +67,19 @@ extern void CPUUndefinedException();
 extern void CPUSoftwareInterrupt();
 extern void CPUSoftwareInterrupt(int comment);
 
+#ifndef __GBAINLINE__
 
+int dataTicksAccess16(u32 address);
+int dataTicksAccess32(u32 address);
+int dataTicksAccessSeq16(u32 address);
+int dataTicksAccessSeq32(u32 address);
+int codeTicksAccess16(u32 address);
+int codeTicksAccess32(u32 address);
+int codeTicksAccessSeq16(u32 address);
+int codeTicksAccessSeq32(u32 address);
+void cpuMasterCodeCheck();
+
+#else
 // Waitstates when accessing data
 inline int dataTicksAccess16(u32 address) // DATA 8/16bits NON SEQ
 {
@@ -284,5 +296,6 @@ inline void cpuMasterCodeCheck()
     cpuTotalTicks += cheatsCheckKeys(P1^0x3FF, ext);
   }
 }
+#endif // __GBAINLINE__
 
 #endif // GBACPU_H
