@@ -18,8 +18,8 @@
     <!-- A string value of the format <0-999>.<0-999>.<0-999> that represents application version which can be used to check for application upgrade. 
          Values can also be 1-part or 2-part. It is not necessary to have a 3-part value.
          An updated version of application must have a versionNumber value higher than the previous version. Required. -->
-    <versionNumber>1.0.4</versionNumber>
-    <buildId>4</buildId>
+    <versionNumber>1.0.5</versionNumber>
+    <buildId>2</buildId>
 
     <!-- Fourth digit segment of the package version. First three segments are taken from the 
          <versionNumber> element.  Must be an integer from 0 to 2^16-1 -->
@@ -95,6 +95,7 @@
     <asset path="${workspace_loc:/SFML-network/Device-Debug/libSFML-network.so}" type="Qnx/Elf">lib/libSFML-network.so</asset>
     <asset path="${workspace_loc:/TouchControlOverlay/Device-Release/libTouchControlOverlay.so}" type="Qnx/Elf">lib/libTouchControlOverlay.so</asset>
     <asset path="media/start-button.png">start-button.png</asset>
+    <asset path="sdl-controls-keyboard.xml">sdl-controls-keyboard.xml</asset>
     
     <!--  The icon for the application, which should be 86x86. -->
     

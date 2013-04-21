@@ -19,6 +19,25 @@
 #include "../Util.h"
 #include "../System.h"
 #include "agbprint.h"
+
+#define __ARMASM__
+
+#ifdef PROFILING
+#define ASMPROF(x) (++x)
+#else
+#define ASMPROF(x)
+#endif
+
+u32 __lsl_imm=0;
+u32 __lsl_reg=0;
+u32 __lsr_imm=0;
+u32 __lsr_reg=0;
+u32 __asr_imm=0;
+u32 __asr_reg=0;
+u32 __ror_imm=0;
+u32 __ror_reg=0;
+u32 __imm=0;
+
 #ifdef PROFILING
 #include "prof/prof.h"
 #endif
@@ -33,6 +52,7 @@
 
 ///////////////////////////////////////////////////////////////////////////
 #define INSN_REGPARM
+
 
 static int clockTicks;
 
@@ -712,10 +732,69 @@ static void count(u32 opcode, int cond_res)
 
 // C core
 
+#ifdef __ARMASM__
+#define C_SETCOND_LOGICAL \
+	__asm__ __volatile__ (                               \
+		"   cmp   %[res],  #0\n\t"                       \
+		"   mov   %[C_FLAG], %[C_OUT]\n\t"               \
+		"   ite   lt\n\t"                                \
+		"   movlt %[N_FLAG], #1\n\t"                     \
+		"   movge %[N_FLAG], #0\n\t"                     \
+		"   ite   eq\n\t"                                \
+		"   moveq %[Z_FLAG], #1\n\t"                     \
+		"   movne %[Z_FLAG], #0\n\t"                     \
+		"11:\n\t"                                        \
+		: [N_FLAG] "=&r" (N_FLAG), [Z_FLAG] "=&r" (Z_FLAG), [C_FLAG] "=&r" (C_FLAG)	\
+		: [res] "r" (res), [C_OUT] "r" (C_OUT)                             	        \
+		: );
+#else
 #define C_SETCOND_LOGICAL \
     N_FLAG = ((s32)res < 0) ? true : false;             \
     Z_FLAG = (res == 0) ? true : false;                 \
     C_FLAG = C_OUT;
+#endif
+
+#ifdef __ARMASM__
+#define C_SETCOND_ADD \
+	__asm__ __volatile__ (                               \
+		"   cmp   %[res],  #0\n\t"                       \
+		"   mov   r7, #0x80000000\n\t"                   \
+		"   ite   lt\n\t"                                \
+		"   movlt %[N_FLAG], #1\n\t"                     \
+		"   movge %[N_FLAG], #0\n\t"                     \
+		"   ite   eq\n\t"                                \
+		"   moveq %[Z_FLAG], #1\n\t"                     \
+		"   movne %[Z_FLAG], #0\n\t"                     \
+		"   and   %[V_FLAG], %[lhs], r7\n\t"             \
+		"   and   %[V_FLAG], %[V_FLAG], %[rhs]\n\t"      \
+		"   bics  %[V_FLAG], %[V_FLAG], %[res]\n\t"      \
+		"   mov   %[V_FLAG], #1\n\t"                     \
+		"   bne   12f\n\t"                               \
+		"   and   %[V_FLAG], %[res], r7\n\t"             \
+		"   bic   %[V_FLAG], %[V_FLAG], %[rhs]\n\t"      \
+		"   bics  %[V_FLAG], %[V_FLAG], %[lhs]\n\t"      \
+		"   mov   %[V_FLAG], #1\n\t"                     \
+		"   it    eq\n\t"                                \
+		"   moveq %[V_FLAG], #0\n\t"                     \
+		"12:\n\t"                                        \
+		"   and   %[C_FLAG], %[lhs], r7\n\t"             \
+		"   ands  %[C_FLAG], %[C_FLAG], %[rhs]\n\t"      \
+		"   mov   %[C_FLAG], #1\n\t"                     \
+		"   bne   13f\n\t"                               \
+		"   and   %[C_FLAG], %[lhs], r7\n\t"             \
+		"   bics  %[C_FLAG], %[C_FLAG], %[res]\n\t"      \
+		"   mov   %[C_FLAG], #1\n\t"                     \
+		"   bne   13f\n\t"                               \
+		"   and   %[C_FLAG], %[rhs], r7\n\t"             \
+		"   bics  %[C_FLAG], %[C_FLAG], %[res]\n\t"      \
+		"   mov   %[C_FLAG], #1\n\t"                     \
+		"   it    eq\n\t"                                \
+		"   moveq %[C_FLAG], #0\n\t"                     \
+		"13:\n\t"                                        \
+		: [N_FLAG] "=&r" (N_FLAG), [Z_FLAG] "=&r" (Z_FLAG), [V_FLAG] "=&r" (V_FLAG), [C_FLAG] "=&r" (C_FLAG)	\
+		: [res] "r" (res), [lhs] "r" (lhs), [rhs] "r" (rhs), [C_OUT] "r" (C_OUT)                                \
+		: "r7" );
+#else
 #define C_SETCOND_ADD \
     N_FLAG = ((s32)res < 0) ? true : false;             \
     Z_FLAG = (res == 0) ? true : false;                 \
@@ -724,6 +803,49 @@ static void count(u32 opcode, int cond_res)
     C_FLAG = ((NEG(lhs) & NEG(rhs)) |                   \
               (NEG(lhs) & POS(res)) |                   \
               (NEG(rhs) & POS(res))) ? true : false;
+#endif
+
+#ifdef __ARMASM__
+#define C_SETCOND_SUB \
+	__asm__ __volatile__ (                               \
+		"   cmp   %[res],  #0\n\t"                       \
+		"   mov   r7, #0x80000000\n\t"                   \
+		"   ite   lt\n\t"                                \
+		"   movlt %[N_FLAG], #1\n\t"                     \
+		"   movge %[N_FLAG], #0\n\t"                     \
+		"   ite   eq\n\t"                                \
+		"   moveq %[Z_FLAG], #1\n\t"                     \
+		"   movne %[Z_FLAG], #0\n\t"                     \
+		"   and   %[V_FLAG], %[lhs], r7\n\t"             \
+		"   bic   %[V_FLAG], %[V_FLAG], %[rhs]\n\t"      \
+		"   bics  %[V_FLAG], %[V_FLAG], %[res]\n\t"      \
+		"   mov   %[V_FLAG], #1\n\t"                     \
+		"   bne   22f\n\t"                               \
+		"   and   %[V_FLAG], %[res], r7\n\t"             \
+		"   and   %[V_FLAG], %[V_FLAG], %[rhs]\n\t"      \
+		"   bics  %[V_FLAG], %[V_FLAG], %[lhs]\n\t"      \
+		"   mov   %[V_FLAG], #1\n\t"                     \
+		"   it    eq\n\t"                                \
+		"   moveq %[V_FLAG], #0\n\t"                     \
+		"22:\n\t"                                        \
+		"   and   %[C_FLAG], %[lhs], r7\n\t"             \
+		"   bics  %[C_FLAG], %[C_FLAG], %[rhs]\n\t"      \
+		"   mov   %[C_FLAG], #1\n\t"                     \
+		"   bne   23f\n\t"                               \
+		"   and   %[C_FLAG], %[lhs], r7\n\t"             \
+		"   bics  %[C_FLAG], %[C_FLAG], %[res]\n\t"      \
+		"   mov   %[C_FLAG], #1\n\t"                     \
+		"   bne   23f\n\t"                               \
+		"   bic   %[C_FLAG], r7, %[rhs]\n\t"             \
+		"   bics  %[C_FLAG], %[C_FLAG], %[res]\n\t"      \
+		"   mov   %[C_FLAG], #1\n\t"                     \
+		"   it    eq\n\t"                                \
+		"   moveq %[C_FLAG], #0\n\t"                     \
+		"23:\n\t"                                        \
+		: [N_FLAG] "=&r" (N_FLAG), [Z_FLAG] "=&r" (Z_FLAG), [V_FLAG] "=&r" (V_FLAG), [C_FLAG] "=&r" (C_FLAG)	\
+		: [res] "r" (res), [lhs] "r" (lhs), [rhs] "r" (rhs), [C_OUT] "r" (C_OUT)                                \
+		: "r7" );
+#else
 #define C_SETCOND_SUB \
     N_FLAG = ((s32)res < 0) ? true : false;             \
     Z_FLAG = (res == 0) ? true : false;                 \
@@ -732,47 +854,132 @@ static void count(u32 opcode, int cond_res)
     C_FLAG = ((NEG(lhs) & POS(rhs)) |                   \
               (NEG(lhs) & POS(res)) |                   \
               (POS(rhs) & POS(res))) ? true : false;
+#endif
 
 #ifndef ALU_INIT_C
+#ifdef __ARMASM__
+ #define ALU_INIT_C \
+    int dest;                                           \
+    bool C_OUT = C_FLAG;                                \
+    u32 value;                                          \
+    __asm__ __volatile__ (                              \
+		"   ubfx %[dest], %[opcode], #12, #4\n\t"       \
+		: [dest] "=&r" (dest)                           \
+		: [opcode] "r" (opcode)                         \
+		: );
+
+#else
  #define ALU_INIT_C \
     int dest = (opcode>>12) & 15;                       \
     bool C_OUT = C_FLAG;                                \
     u32 value;
 #endif
+#endif
 // OP Rd,Rb,Rm LSL #
 #ifndef VALUE_LSL_IMM_C
+#ifdef __ARMASM__
  #define VALUE_LSL_IMM_C \
-    unsigned int shift = (opcode >> 7) & 0x1F;          \
-    if (LIKELY(!shift)) {  /* LSL #0 most common? */    \
-        value = reg[opcode & 0x0F].I;                   \
-    } else {                                            \
-        u32 v = reg[opcode & 0x0F].I;                   \
-        C_OUT = (v >> (32 - shift)) & 1 ? true : false; \
-        value = v << shift;                             \
-    }
+    volatile unsigned int shift;                         \
+    ASMPROF(__lsl_imm);                                  \
+	__asm__ __volatile__ (                               \
+		"   ubfx  %[shift], %[opcode],  #7, #5\n\t"      \
+		"   and   r7, %[opcode], #0xF \n\t"              \
+		"   ldr   %[value], [%[reg], r7, LSL#2] \n\t"    \
+		"   cbz   %[shift], 01f  \n\t"                             \
+		"   rsb   r8, %[shift], #32 \n\t"                \
+		"   lsrs  r7, %[value], r8  \n\t"                \
+		"   lsl   %[value], %[value], %[shift] \n\t"     \
+		"   ite   eq\n\t"                                \
+		"   moveq %[C_OUT], #0 \n\t"                     \
+		"   movne %[C_OUT], #1 \n\t"                     \
+		"01:\n\t"                                        \
+		: [shift] "=&r" (shift), [value] "=&r" (value), [C_OUT] "=&r" (C_OUT)	\
+		: [opcode] "r" (opcode), [reg] "r" (reg)                             	\
+		: "r7", "r8" );
+ #else
+ #define VALUE_LSL_IMM_C \
+		unsigned int shift = (opcode >> 7) & 0x1F;          \
+		if (LIKELY(!shift)) {  /* LSL #0 most common? */    \
+			value = reg[opcode & 0x0F].I;                   \
+		} else {                                            \
+			u32 v = reg[opcode & 0x0F].I;                   \
+			C_OUT = (v >> (32 - shift)) & 1 ? true : false; \
+			value = v << shift;                             \
+		}
+ #endif
 #endif
 // OP Rd,Rb,Rm LSL Rs
 #ifndef VALUE_LSL_REG_C
+#ifdef __ARMASM__
  #define VALUE_LSL_REG_C \
-    unsigned int shift = reg[(opcode >> 8)&15].B.B0;    \
+    volatile unsigned int shift;                         \
+    ASMPROF(__lsl_reg);                                  \
+	__asm__ __volatile__ (                               \
+		"   ubfx  r7, %[opcode],  #8,  #4\n\t"           \
+		"   ldrb  %[shift], [%[reg], r7, LSL#2]\n\t"     \
+		"   and   r7, %[opcode], #0xF \n\t"              \
+		"   ldr   %[value], [%[reg], r7, LSL#2] \n\t"    \
+		"   cbz   %[shift], 01f  \n\t"                   \
+		"   rsb   r8, %[shift], #32 \n\t"                \
+		"   lsr   r7, %[value], r8  \n\t"                \
+		"   ands  r7, r7, #1\n\t"                        \
+		"   lsl   %[value], %[value], %[shift] \n\t"     \
+		"   ite   eq\n\t"                                \
+		"   moveq %[C_OUT], #0 \n\t"                     \
+		"   movne %[C_OUT], #1 \n\t"                     \
+		"01:\n\t"                                        \
+		: [shift] "=&r" (shift), [value] "=&r" (value), [C_OUT] "=&r" (C_OUT)	\
+		: [opcode] "r" (opcode), [reg] "r" (reg)                             	\
+		: "r7", "r8" );
+#else
+ #define VALUE_LSL_REG_C \
+	unsigned int shift = reg[(opcode >> 8)&15].B.B0;    \
     if (LIKELY(shift)) {                                \
-        if (shift == 32) {                              \
-            value = 0;                                  \
-            C_OUT = (reg[opcode & 0x0F].I & 1 ? true : false);\
-        } else if (LIKELY(shift < 32)) {                \
-            u32 v = reg[opcode & 0x0F].I;               \
-            C_OUT = (v >> (32 - shift)) & 1 ? true : false;\
-            value = v << shift;                         \
-        } else {                                        \
-            value = 0;                                  \
-            C_OUT = false;                              \
-        }                                               \
+    	if (shift == 32) {                              \
+    		value = 0;                                  \
+    		C_OUT = (reg[opcode & 0x0F].I & 1 ? true : false);\
+    	} else if (LIKELY(shift < 32)) {                \
+    		u32 v = reg[opcode & 0x0F].I;               \
+    		C_OUT = (v >> (32 - shift)) & 1 ? true : false;\
+    		value = v << shift;                         \
+    	} else {                                        \
+    		value = 0;                                  \
+    		C_OUT = false;                              \
+    	}                                               \
     } else {                                            \
-        value = reg[opcode & 0x0F].I;                   \
+    	value = reg[opcode & 0x0F].I;                   \
     }
 #endif
+#endif
+
 // OP Rd,Rb,Rm LSR #
 #ifndef VALUE_LSR_IMM_C
+#ifdef __ARMASM__
+ #define VALUE_LSR_IMM_C \
+    volatile unsigned int shift;                         \
+    ASMPROF(__lsr_imm);                                  \
+	__asm__ __volatile__ (                               \
+		"   ubfx  %[shift], %[opcode],  #7, #5\n\t"      \
+		"   and   r7, %[opcode], #0xF \n\t"              \
+		"   ldr   %[value], [%[reg], r7, LSL#2] \n\t"    \
+		"   cbz   %[shift], 01f  \n\t"                   \
+		"   sub   r8, %[shift], #1 \n\t"                 \
+		"   lsr   r7, %[value], r8  \n\t"                \
+		"   ands  r7, r7, #1\n\t"                        \
+		"   lsr   %[value], %[value], %[shift] \n\t"     \
+		"   b     02f\n\t"                               \
+		"01:\n\t"                                        \
+		"   ands  %[value], %[value], #0x80000000\n\t"   \
+		"   mov   %[value], #0\n\t"                      \
+		"02:\n\t"                                        \
+		"   ite   eq\n\t"                                \
+		"   moveq %[C_OUT], #0 \n\t"                     \
+		"   movne %[C_OUT], #1 \n\t"                     \
+		"03:\n\t"                                        \
+		: [shift] "=&r" (shift), [value] "=&r" (value), [C_OUT] "=&r" (C_OUT)	\
+		: [opcode] "r" (opcode), [reg] "r" (reg)                             	\
+		: "r7", "r8" );
+#else
  #define VALUE_LSR_IMM_C \
     unsigned int shift = (opcode >> 7) & 0x1F;          \
     if (LIKELY(shift)) {                                \
@@ -784,28 +991,58 @@ static void count(u32 opcode, int cond_res)
         C_OUT = (reg[opcode & 0x0F].I & 0x80000000) ? true : false;\
     }
 #endif
+#endif
 // OP Rd,Rb,Rm LSR Rs
 #ifndef VALUE_LSR_REG_C
  #define VALUE_LSR_REG_C \
     unsigned int shift = reg[(opcode >> 8)&15].B.B0;    \
+    ASMPROF(__lsr_reg);                                 \
     if (LIKELY(shift)) {                                \
-        if (shift == 32) {                              \
-            value = 0;                                  \
-            C_OUT = (reg[opcode & 0x0F].I & 0x80000000 ? true : false);\
-        } else if (LIKELY(shift < 32)) {                \
-            u32 v = reg[opcode & 0x0F].I;               \
-            C_OUT = (v >> (shift - 1)) & 1 ? true : false;\
-            value = v >> shift;                         \
-        } else {                                        \
-            value = 0;                                  \
-            C_OUT = false;                              \
-        }                                               \
+    	if (shift == 32) {                              \
+    		value = 0;                                  \
+    		C_OUT = (reg[opcode & 0x0F].I & 0x80000000 ? true : false);\
+    	} else if (LIKELY(shift < 32)) {                \
+    		u32 v = reg[opcode & 0x0F].I;               \
+    		C_OUT = (v >> (shift - 1)) & 1 ? true : false;\
+    		value = v >> shift;                         \
+    	} else {                                        \
+    		value = 0;                                  \
+    		C_OUT = false;                              \
+    	}                                               \
     } else {                                            \
-        value = reg[opcode & 0x0F].I;                   \
+    	value = reg[opcode & 0x0F].I;                   \
     }
 #endif
 // OP Rd,Rb,Rm ASR #
 #ifndef VALUE_ASR_IMM_C
+#ifdef __ARMASM__
+ #define VALUE_ASR_IMM_C \
+	volatile unsigned int shift;                         \
+    ASMPROF(__asr_imm);                                  \
+	__asm__ __volatile__ (                               \
+		"   ubfx  %[shift], %[opcode],  #7, #5\n\t"      \
+		"   and   r7, %[opcode], #0xF \n\t"              \
+		"   ldr   %[value], [%[reg], r7, LSL#2] \n\t"    \
+		"   cbz   %[shift], 01f  \n\t"                   \
+		"   sub   r8, %[shift], #1 \n\t"                 \
+		"   asr   r7, %[value], r8  \n\t"                \
+		"   ands  r7, r7, #1\n\t"                        \
+		"   asr   %[value], %[value], %[shift] \n\t"     \
+		"   b     02f\n\t"                               \
+		"01:\n\t"                                        \
+		"   ands  %[value], %[value], #0x80000000\n\t"   \
+		"   ite   eq\n\t"                                \
+		"   moveq %[value], #0 \n\t"                     \
+		"   movne %[value], #0xFFFFFFFF \n\t"            \
+		"02:\n\t"                                        \
+		"   ite   eq\n\t"                                \
+		"   moveq %[C_OUT], #0 \n\t"                     \
+		"   movne %[C_OUT], #1 \n\t"                     \
+		"03:\n\t"                                        \
+		: [shift] "=&r" (shift), [value] "=&r" (value), [C_OUT] "=&r" (C_OUT)	\
+		: [opcode] "r" (opcode), [reg] "r" (reg)                             	\
+		: "r7", "r8" );
+#else
  #define VALUE_ASR_IMM_C \
     unsigned int shift = (opcode >> 7) & 0x1F;          \
     if (LIKELY(shift)) {                                \
@@ -823,10 +1060,13 @@ static void count(u32 opcode, int cond_res)
         }                                               \
     }
 #endif
+#endif
+
 // OP Rd,Rb,Rm ASR Rs
 #ifndef VALUE_ASR_REG_C
  #define VALUE_ASR_REG_C \
     unsigned int shift = reg[(opcode >> 8)&15].B.B0;    \
+    ASMPROF(__asr_reg);                                 \
     if (LIKELY(shift < 32)) {                           \
         if (LIKELY(shift)) {                            \
             s32 v = reg[opcode & 0x0F].I;               \
@@ -847,6 +1087,36 @@ static void count(u32 opcode, int cond_res)
 #endif
 // OP Rd,Rb,Rm ROR #
 #ifndef VALUE_ROR_IMM_C
+#ifdef __ARMASM__
+ #define VALUE_ROR_IMM_C \
+	volatile unsigned int shift;                         \
+    ASMPROF(__ror_imm);                                  \
+	__asm__ __volatile__ (                               \
+		"   lsr   %[shift], %[shift],   #7\n\t"          \
+		"   ands  %[shift], %[opcode],  #0x1F\n\t"       \
+		"   and   %[value], %[opcode],  #0xF \n\t"       \
+		"   beq   01f  \n\t"                             \
+		"   sub   r8, %[shift], #1 \n\t"                 \
+		"   lsr   r7, %[value], r8  \n\t"                \
+		"   ands  r7, r7, #1\n\t"                        \
+		"   rsb   r8, %[shift], #32 \n\t"                \
+		"   lsl   r7, %[value], r8 \n\t"                 \
+		"   lsr   %[value], %[value], %[shift] \n\t"     \
+		"   orr   %[value], %[value], r7 \n\t"           \
+		"   b     02f\n\t"                               \
+		"01:\n\t"                                        \
+		"   ands  r7, %[value], #1\n\t"                  \
+		"   lsr   %[value], %[value], #1\n\t"            \
+		"   lsl   r7, %[C_FLAG], #31\n\t"                \
+		"   orr   %[value], %[value], r7\n\t"            \
+		"02:\n\t"                                        \
+		"   ite   eq\n\t"                                \
+		"   moveq %[C_OUT], #0 \n\t"                     \
+		"   movne %[C_OUT], #1 \n\t"                     \
+		: [shift] "=&r" (shift), [value] "=&r" (value), [C_OUT] "=&r" (C_OUT)	\
+		: [opcode] "r" (opcode), [reg] "r" (reg), [C_FLAG] "r" (C_FLAG)         \
+		: "r7", "r8" );
+#else
  #define VALUE_ROR_IMM_C \
     unsigned int shift = (opcode >> 7) & 0x1F;          \
     if (LIKELY(shift)) {                                \
@@ -861,10 +1131,12 @@ static void count(u32 opcode, int cond_res)
                  (C_FLAG << 31));                       \
     }
 #endif
+#endif
 // OP Rd,Rb,Rm ROR Rs
 #ifndef VALUE_ROR_REG_C
  #define VALUE_ROR_REG_C \
     unsigned int shift = reg[(opcode >> 8)&15].B.B0;    \
+    ASMPROF(__ror_reg);                                 \
     if (LIKELY(shift & 0x1F)) {                         \
         u32 v = reg[opcode & 0x0F].I;                   \
         C_OUT = (v >> (shift - 1)) & 1 ? true : false;  \
@@ -878,6 +1150,30 @@ static void count(u32 opcode, int cond_res)
 #endif
 // OP Rd,Rb,# ROR #
 #ifndef VALUE_IMM_C
+#ifdef __ARMASM__
+ #define VALUE_IMM_C \
+	volatile unsigned int shift;                         \
+    ASMPROF(__imm);                                      \
+	__asm__ __volatile__ (                               \
+		"   and   %[shift], %[opcode],  #0xF00\n\t"      \
+		"   lsrs  %[shift], %[shift],   #7    \n\t"      \
+		"   and   %[value], %[opcode], #0xFF \n\t"       \
+		"   beq   01f  \n\t"                             \
+		"   sub   r8, %[shift], #1 \n\t"                 \
+		"   lsr   r7, %[value], r8  \n\t"                \
+		"   ands  r7, r7, #1\n\t"                        \
+		"   rsb   r8, %[shift], #32 \n\t"                \
+		"   lsl   r7, %[value], r8 \n\t"                 \
+		"   lsr   %[value], %[value], %[shift] \n\t"     \
+		"   orr   %[value], %[value], r7 \n\t"           \
+		"   ite   eq\n\t"                                \
+		"   moveq %[C_OUT], #0 \n\t"                     \
+		"   movne %[C_OUT], #1 \n\t"                     \
+		"01:\n\t"                                        \
+		: [shift] "=&r" (shift), [value] "=&r" (value), [C_OUT] "=&r" (C_OUT)	\
+		: [opcode] "r" (opcode), [reg] "r" (reg)                             	\
+		: "r7", "r8" );
+#else
  #define VALUE_IMM_C \
     int shift = (opcode & 0xF00) >> 7;                  \
     if (UNLIKELY(shift)) {                              \
@@ -889,145 +1185,472 @@ static void count(u32 opcode, int cond_res)
         value = opcode & 0xFF;                          \
     }
 #endif
+#endif
 
 // Make the non-carry versions default to the carry versions
 // (this is fine for C--the compiler will optimize the dead code out)
 #ifndef ALU_INIT_NC
+#ifdef __ARMASM__
+ #define ALU_INIT_NC \
+    int dest;                                           \
+    bool C_OUT = C_FLAG;                                \
+    register u32 value;                                 \
+    __asm__ __volatile__ (                              \
+		"   ubfx %[dest], %[opcode], #12, #4\n\t"       \
+		: [dest] "=&r" (dest)                           \
+		: [opcode] "r" (opcode)                         \
+		: );
+#else
  #define ALU_INIT_NC ALU_INIT_C
 #endif
+#endif
 #ifndef VALUE_LSL_IMM_NC
+#ifdef __ARMASM__
+ #define VALUE_LSL_IMM_NC \
+    volatile unsigned int shift;                         \
+    ASMPROF(__lsl_imm);                                  \
+	__asm__ __volatile__ (                               \
+		"   lsr   %[shift], %[opcode],  #7\n\t"          \
+		"   ands  %[shift], %[shift],   #0x1F\n\t"       \
+		"   and   r7, %[opcode], #0xF \n\t"              \
+		"   ldr   %[value], [%[reg], r7, LSL#2] \n\t"    \
+		"   it    ne\n\t"                                \
+		"   lslne %[value], %[value], %[shift] \n\t"     \
+		: [shift] "=&r" (shift), [value] "=&r" (value)   \
+		: [opcode] "r" (opcode), [reg] "r" (reg)         \
+		: "r7" );
+#else
  #define VALUE_LSL_IMM_NC VALUE_LSL_IMM_C
 #endif
+#endif
 #ifndef VALUE_LSL_REG_NC
+#ifdef __ARMASM__
+ #define VALUE_LSL_REG_NC \
+    volatile unsigned int shift;                         \
+    ASMPROF(__lsl_reg);                                  \
+	__asm__ __volatile__ (                               \
+		"   lsr   r7, %[opcode],  #8\n\t"                \
+		"   ands  r7, r7,   #0xF\n\t"                    \
+		"   ldrb  %[shift], [%[reg], r7, LSL#2]\n\t"     \
+		"   and   r7, %[opcode], #0xF \n\t"              \
+		"   ldr   %[value], [%[reg], r7, LSL#2] \n\t"    \
+		"   it    ne\n\t"                                \
+		"   lslne %[value], %[value], %[shift] \n\t"     \
+		: [shift] "=&r" (shift), [value] "=&r" (value)   \
+		: [opcode] "r" (opcode), [reg] "r" (reg)         \
+		: "r7" );
+#else
  #define VALUE_LSL_REG_NC VALUE_LSL_REG_C
 #endif
+#endif
 #ifndef VALUE_LSR_IMM_NC
+#ifdef __ARMASM__
+ #define VALUE_LSR_IMM_NC \
+    volatile unsigned int shift;                         \
+    ASMPROF(__lsr_imm);                                  \
+	__asm__ __volatile__ (                               \
+		"   lsr   %[shift], %[opcode],  #7\n\t"          \
+		"   ands  %[shift], %[shift],   #0x1F\n\t"       \
+		"   and   r7, %[opcode], #0xF \n\t"              \
+		"   ldr   %[value], [%[reg], r7, LSL#2] \n\t"    \
+		"   ite   ne\n\t"                                \
+		"   lsrne %[value], %[value], %[shift] \n\t"     \
+		"   moveq %[value], #0\n\t"                      \
+		: [shift] "=&r" (shift), [value] "=&r" (value)   \
+		: [opcode] "r" (opcode), [reg] "r" (reg)         \
+		: "r7" );
+#else
  #define VALUE_LSR_IMM_NC VALUE_LSR_IMM_C
 #endif
+#endif
 #ifndef VALUE_LSR_REG_NC
- #define VALUE_LSR_REG_NC VALUE_LSR_REG_C
+ #define VALUE_LSR_REG_NC                           \
+   unsigned int shift = reg[(opcode >> 8)&15].B.B0; \
+   ASMPROF(__lsr_reg);                              \
+   if (LIKELY(shift)) {                             \
+   	if (shift == 32) {                              \
+   		value = 0;                                  \
+   	} else if (LIKELY(shift < 32)) {                \
+   		u32 v = reg[opcode & 0x0F].I;               \
+   		value = v >> shift;                         \
+   	} else {                                        \
+   		value = 0;                                  \
+   	}                                               \
+   } else {                                         \
+   	value = reg[opcode & 0x0F].I;                   \
+   }
+
 #endif
 #ifndef VALUE_ASR_IMM_NC
- #define VALUE_ASR_IMM_NC VALUE_ASR_IMM_C
+ #define VALUE_ASR_IMM_NC                               \
+	unsigned int shift = (opcode >> 7) & 0x1F;          \
+	if (LIKELY(shift)) {                                \
+		/* VC++ BUG: u32 v; (s32)v>>n is optimized to shr! */ \
+		s32 v = reg[opcode & 0x0F].I;                   \
+		value = v >> (int)shift;                        \
+	} else {                                            \
+		if (reg[opcode & 0x0F].I & 0x80000000) {        \
+			value = 0xFFFFFFFF;                         \
+		} else {                                        \
+			value = 0;                                  \
+		}                                               \
+	}
+
 #endif
 #ifndef VALUE_ASR_REG_NC
- #define VALUE_ASR_REG_NC VALUE_ASR_REG_C
+ #define VALUE_ASR_REG_NC                              \
+   unsigned int shift = reg[(opcode >> 8)&15].B.B0;    \
+   ASMPROF(__asr_reg);                                 \
+   if (LIKELY(shift < 32)) {                           \
+       if (LIKELY(shift)) {                            \
+           s32 v = reg[opcode & 0x0F].I;               \
+           value = v >> (int)shift;                    \
+       } else {                                        \
+           value = reg[opcode & 0x0F].I;               \
+       }                                               \
+   } else {                                            \
+       if (reg[opcode & 0x0F].I & 0x80000000) {        \
+           value = 0xFFFFFFFF;                         \
+       } else {                                        \
+           value = 0;                                  \
+       }                                               \
+   }
 #endif
 #ifndef VALUE_ROR_IMM_NC
- #define VALUE_ROR_IMM_NC VALUE_ROR_IMM_C
+ #define VALUE_ROR_IMM_NC                               \
+	unsigned int shift = (opcode >> 7) & 0x1F;          \
+	if (LIKELY(shift)) {                                \
+		u32 v = reg[opcode & 0x0F].I;                   \
+		value = ((v << (32 - shift)) |                  \
+				 (v >> shift));                         \
+	} else {                                            \
+		u32 v = reg[opcode & 0x0F].I;                   \
+		value = ((v >> 1) |                             \
+				 (C_FLAG << 31));                       \
+	}
+
 #endif
 #ifndef VALUE_ROR_REG_NC
- #define VALUE_ROR_REG_NC VALUE_ROR_REG_C
+ #define VALUE_ROR_REG_NC                              \
+   unsigned int shift = reg[(opcode >> 8)&15].B.B0;    \
+   ASMPROF(__ror_reg);                                 \
+   if (LIKELY(shift & 0x1F)) {                         \
+       u32 v = reg[opcode & 0x0F].I;                   \
+       value = ((v << (32 - shift)) |                  \
+                (v >> shift));                         \
+   } else {                                            \
+       value = reg[opcode & 0x0F].I;                   \
+   }
+
 #endif
 #ifndef VALUE_IMM_NC
- #define VALUE_IMM_NC VALUE_IMM_C
+ #define VALUE_IMM_NC                                  \
+   int shift = (opcode & 0xF00) >> 7;                  \
+   if (UNLIKELY(shift)) {                              \
+       u32 v = opcode & 0xFF;                          \
+       value = ((v << (32 - shift)) |                  \
+                (v >> shift));                         \
+   } else {                                            \
+       value = opcode & 0xFF;                          \
+   }
+
 #endif
 
 #define C_CHECK_PC(SETCOND) if (LIKELY(dest != 15)) { SETCOND }
 #ifndef OP_AND
+#if 0//def __ARMASM__
+ #define OP_AND \
+    u32 res;                                             \
+	__asm__ __volatile__ (                               \
+		"   lsr   r7, %[opcode], #16\n\t"                \
+		"   and   r7, r7, #0xF\n\t"                      \
+		"   ldr   %[res], [%[reg], r7, LSL#2]\n\t"       \
+		"   and   %[res], %[res], %[value]\n\t"          \
+		: [res] "=&r" (res)                              \
+		: [opcode] "r" (opcode), [reg] "r" (reg), [value] "r" (value) \
+		: "r7" );                                        \
+	reg[dest].I = res;
+#else
  #define OP_AND \
     u32 res = reg[(opcode>>16)&15].I & value;           \
     reg[dest].I = res;
+#endif
 #endif
 #ifndef OP_ANDS
  #define OP_ANDS   OP_AND C_CHECK_PC(C_SETCOND_LOGICAL)
 #endif
 #ifndef OP_EOR
+#if 0//def __ARMASM__
+ #define OP_EOR \
+    u32 res;                                             \
+	__asm__ __volatile__ (                               \
+		"   lsr   r7, %[opcode], #16\n\t"                \
+		"   and   r7, r7, #0xF\n\t"                      \
+		"   ldr   %[res], [%[reg], r7, LSL#2]\n\t"       \
+		"   eor   %[res], %[res], %[value]\n\t"          \
+		: "=&r" (res)                                    \
+		: [opcode] "r" (opcode), [reg] "r" (reg), [value] "r" (value), [res] "r" (res) \
+		: "r7" );                                        \
+	reg[dest].I = res;
+#else
  #define OP_EOR \
     u32 res = reg[(opcode>>16)&15].I ^ value;           \
     reg[dest].I = res;
+#endif
 #endif
 #ifndef OP_EORS
  #define OP_EORS   OP_EOR C_CHECK_PC(C_SETCOND_LOGICAL)
 #endif
 #ifndef OP_SUB
+#if 0//def __ARMASM__
+ #define OP_SUB \
+    u32 lhs;                                             \
+	__asm__ __volatile__ (                               \
+		"   lsr   r7, %[opcode], #16\n\t"                \
+		"   and   r7, r7, #0xF\n\t"                      \
+		"   ldr   %[lhs], [%[reg], r7, LSL#2]\n\t"       \
+		: "=&r" (lhs)                                    \
+		: [opcode] "r" (opcode), [reg] "r" (reg), [lhs] "r" (lhs) \
+		: "r7", "memory" );                              \
+	u32 rhs = value;                                     \
+	u32 res = lhs - rhs;                                 \
+	reg[dest].I = res;
+#else
  #define OP_SUB \
     u32 lhs = reg[(opcode>>16)&15].I;                   \
     u32 rhs = value;                                    \
     u32 res = lhs - rhs;                                \
     reg[dest].I = res;
 #endif
+#endif
 #ifndef OP_SUBS
  #define OP_SUBS   OP_SUB C_CHECK_PC(C_SETCOND_SUB)
 #endif
 #ifndef OP_RSB
+#if 0//def __ARMASM__
+ #define OP_RSB \
+    u32 lhs;                                             \
+	__asm__ __volatile__ (                               \
+		"   lsr   r7, %[opcode], #16\n\t"                \
+		"   and   r7, r7, #0xF\n\t"                      \
+		"   ldr   %[lhs], [%[reg], r7, LSL#2]\n\t"       \
+		: "=&r" (lhs)                                    \
+		: [opcode] "r" (opcode), [reg] "r" (reg), [lhs] "r" (lhs) \
+		: "r7", "memory" );                              \
+	u32 rhs = value;                                     \
+    u32 res = rhs - lhs;                                \
+	reg[dest].I = res;
+#else
  #define OP_RSB \
     u32 lhs = reg[(opcode>>16)&15].I;                   \
     u32 rhs = value;                                    \
     u32 res = rhs - lhs;                                \
     reg[dest].I = res;
 #endif
+#endif
 #ifndef OP_RSBS
  #define OP_RSBS   OP_RSB C_CHECK_PC(C_SETCOND_SUB)
 #endif
 #ifndef OP_ADD
+#if 0//def __ARMASM__
+ #define OP_ADD \
+    u32 lhs;                                             \
+	__asm__ __volatile__ (                               \
+		"   lsr   r7, %[opcode], #16\n\t"                \
+		"   and   r7, r7, #0xF\n\t"                      \
+		"   ldr   %[lhs], [%[reg], r7, LSL#2]\n\t"       \
+		: "=&r" (lhs)                                    \
+		: [opcode] "r" (opcode), [reg] "r" (reg), [lhs] "r" (lhs) \
+		: "r7", "memory" );                              \
+	u32 rhs = value;                                     \
+    u32 res = lhs + rhs;                                \
+	reg[dest].I = res;
+#else
  #define OP_ADD \
     u32 lhs = reg[(opcode>>16)&15].I;                   \
     u32 rhs = value;                                    \
     u32 res = lhs + rhs;                                \
     reg[dest].I = res;
 #endif
+#endif
 #ifndef OP_ADDS
  #define OP_ADDS   OP_ADD C_CHECK_PC(C_SETCOND_ADD)
 #endif
 #ifndef OP_ADC
+#if 0//def __ARMASM__
+ #define OP_ADC \
+    u32 lhs;                                             \
+	__asm__ __volatile__ (                               \
+		"   lsr   r7, %[opcode], #16\n\t"                \
+		"   and   r7, r7, #0xF\n\t"                      \
+		"   ldr   %[lhs], [%[reg], r7, LSL#2]\n\t"       \
+		: "=&r" (lhs)                                    \
+		: [opcode] "r" (opcode), [reg] "r" (reg), [lhs] "r" (lhs) \
+		: "r7", "memory" );                              \
+	u32 rhs = value;                                     \
+    u32 res = lhs + rhs + (u32)C_FLAG;                   \
+	reg[dest].I = res;
+#else
  #define OP_ADC \
     u32 lhs = reg[(opcode>>16)&15].I;                   \
     u32 rhs = value;                                    \
     u32 res = lhs + rhs + (u32)C_FLAG;                  \
     reg[dest].I = res;
 #endif
+#endif
 #ifndef OP_ADCS
  #define OP_ADCS   OP_ADC C_CHECK_PC(C_SETCOND_ADD)
 #endif
 #ifndef OP_SBC
+#if 0//def __ARMASM__
+ #define OP_SBC \
+    u32 lhs;                                             \
+	__asm__ __volatile__ (                               \
+		"   lsr   r7, %[opcode], #16\n\t"                \
+		"   and   r7, r7, #0xF\n\t"                      \
+		"   ldr   %[lhs], [%[reg], r7, LSL#2]\n\t"       \
+		: "=&r" (lhs)                                    \
+		: [opcode] "r" (opcode), [reg] "r" (reg), [lhs] "r" (lhs) \
+		: "r7", "memory" );                              \
+	u32 rhs = value;                                     \
+    u32 res = lhs - rhs - !((u32)C_FLAG);                \
+	reg[dest].I = res;
+#else
  #define OP_SBC \
     u32 lhs = reg[(opcode>>16)&15].I;                   \
     u32 rhs = value;                                    \
     u32 res = lhs - rhs - !((u32)C_FLAG);               \
     reg[dest].I = res;
 #endif
+#endif
 #ifndef OP_SBCS
  #define OP_SBCS   OP_SBC C_CHECK_PC(C_SETCOND_SUB)
 #endif
 #ifndef OP_RSC
+#if 0//def __ARMASM__
+ #define OP_RSC \
+    u32 lhs;                                             \
+	__asm__ __volatile__ (                               \
+		"   lsr   r7, %[opcode], #16\n\t"                \
+		"   and   r7, r7, #0xF\n\t"                      \
+		"   ldr   %[lhs], [%[reg], r7, LSL#2]\n\t"       \
+		: "=&r" (lhs)                                    \
+		: [opcode] "r" (opcode), [reg] "r" (reg), [lhs] "r" (lhs) \
+		: "r7", "memory" );                              \
+	u32 rhs = value;                                     \
+    u32 res = rhs - lhs - !((u32)C_FLAG);                \
+	reg[dest].I = res;
+#else
  #define OP_RSC \
     u32 lhs = reg[(opcode>>16)&15].I;                   \
     u32 rhs = value;                                    \
     u32 res = rhs - lhs - !((u32)C_FLAG);               \
     reg[dest].I = res;
 #endif
+#endif
 #ifndef OP_RSCS
  #define OP_RSCS   OP_RSC C_CHECK_PC(C_SETCOND_SUB)
 #endif
 #ifndef OP_TST
+#if 0//def __ARMASM__
+ #define OP_TST \
+    u32 res;                                             \
+	__asm__ __volatile__ (                               \
+		"   lsr   r7, %[opcode], #16\n\t"                \
+		"   and   r7, r7, #0xF\n\t"                      \
+		"   ldr   %[res], [%[reg], r7, LSL#2]\n\t"       \
+		"   and   %[res], %[res], %[value]\n\t"          \
+		: "=&r" (res)                                    \
+		: [opcode] "r" (opcode), [reg] "r" (reg), [res] "r" (res), [value] "r" (value) \
+		: "r7" );                                        \
+    C_SETCOND_LOGICAL;
+#else
  #define OP_TST \
     u32 res = reg[(opcode >> 16) & 0x0F].I & value;     \
     C_SETCOND_LOGICAL;
 #endif
+#endif
 #ifndef OP_TEQ
+#if 0//def __ARMASM__
+ #define OP_TEQ \
+    u32 res;                                             \
+	__asm__ __volatile__ (                               \
+		"   lsr   r7, %[opcode], #16\n\t"                \
+		"   and   r7, r7, #0xF\n\t"                      \
+		"   ldr   %[res], [%[reg], r7, LSL#2]\n\t"       \
+		"   eor   %[res], %[res], %[value]\n\t"          \
+		: "=&r" (res)                                    \
+		: [opcode] "r" (opcode), [reg] "r" (reg), [res] "r" (res), [value] "r" (value) \
+		: "r7" );                                        \
+    C_SETCOND_LOGICAL;
+#else
  #define OP_TEQ \
     u32 res = reg[(opcode >> 16) & 0x0F].I ^ value;     \
     C_SETCOND_LOGICAL;
 #endif
+#endif
 #ifndef OP_CMP
+#if 0//def __ARMASM__
+ #define OP_CMP \
+    u32 lhs;                                             \
+	__asm__ __volatile__ (                               \
+		"   lsr   r7, %[opcode], #16\n\t"                \
+		"   and   r7, r7, #0xF\n\t"                      \
+		"   ldr   %[lhs], [%[reg], r7, LSL#2]\n\t"       \
+		: "=&r" (lhs)                                    \
+		: [opcode] "r" (opcode), [reg] "r" (reg), [lhs] "r" (lhs) \
+		: "r7", "memory" );                              \
+	u32 rhs = value;                                     \
+	u32 res = lhs - rhs;                                 \
+	C_SETCOND_SUB;
+#else
  #define OP_CMP \
     u32 lhs = reg[(opcode>>16)&15].I;                   \
     u32 rhs = value;                                    \
     u32 res = lhs - rhs;                                \
     C_SETCOND_SUB;
 #endif
+#endif
 #ifndef OP_CMN
+#if 0//def __ARMASM__
+ #define OP_CMN \
+    u32 lhs;                                             \
+	__asm__ __volatile__ (                               \
+		"   lsr   r7, %[opcode], #16\n\t"                \
+		"   and   r7, r7, #0xF\n\t"                      \
+		"   ldr   %[lhs], [%[reg], r7, LSL#2]\n\t"       \
+		: "=&r" (lhs)                                    \
+		: [opcode] "r" (opcode), [reg] "r" (reg), [lhs] "r" (lhs) \
+		: "r7", "memory" );                              \
+	u32 rhs = value;                                     \
+	u32 res = lhs + rhs;                                 \
+	C_SETCOND_ADD;
+#else
  #define OP_CMN \
     u32 lhs = reg[(opcode>>16)&15].I;                   \
     u32 rhs = value;                                    \
     u32 res = lhs + rhs;                                \
     C_SETCOND_ADD;
 #endif
+#endif
 #ifndef OP_ORR
+#if 0//def __ARMASM__
+ #define OP_ORR \
+    u32 res;                                             \
+	__asm__ __volatile__ (                               \
+		"   lsr   r7, %[opcode], #16\n\t"                \
+		"   and   r7, r7, #0xF\n\t"                      \
+		"   ldr   %[res], [%[reg], r7, LSL#2]\n\t"       \
+		"   orr   %[res], %[res], %[value]\n\t"          \
+		: "=&r" (res)                                    \
+		: [opcode] "r" (opcode), [reg] "r" (reg), [res] "r" (res), [value] "r" (value) \
+		: "r7" );                                        \
+    reg[dest].I = res;
+#else
  #define OP_ORR \
     u32 res = reg[(opcode >> 16) & 0x0F].I | value;     \
     reg[dest].I = res;
+#endif
 #endif
 #ifndef OP_ORRS
  #define OP_ORRS   OP_ORR C_CHECK_PC(C_SETCOND_LOGICAL)

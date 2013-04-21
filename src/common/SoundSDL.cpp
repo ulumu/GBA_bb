@@ -21,7 +21,7 @@ extern int emulating;
 extern bool speedup;
 
 // Hold up to 100 ms of data in the ring buffer
-const float SoundSDL::_delay = 0.300f;
+const float SoundSDL::_delay = 0.800f;
 
 SoundSDL::SoundSDL():
 	_rbuf(0),
@@ -53,19 +53,15 @@ inline void SoundSDL::write(u16 * finalWave, int length)
 	unsigned int samples = length / 4;
 	std::size_t avail;
 
-	/*
-	if (!_initialized)
+	if (!_initialized || length <= 0 || !emulating)
 		return;
-
+/*
 	if (SDL_GetAudioStatus() != SDL_AUDIO_PLAYING)
 		SDL_PauseAudio(0);
 
 */
 	SDL_mutexP(_mutex);
 
-	//unsigned int samples = length / 4;
-
-	// std::size_t avail;
 	while ((avail = _rbuf.avail() / 2) < samples)
 	{
 		_rbuf.write(finalWave, avail * 2);
@@ -76,17 +72,20 @@ inline void SoundSDL::write(u16 * finalWave, int length)
 		// by waiting till there is enough room in the buffer
 
 #ifdef __QNXNTO__  // forced sync is glitchy .. need performance improvements...
-	//	if (emulating && !speedup)
+//		if (emulating && !speedup)
 //		{
- //   SDL_CondWait(_cond, _mutex);
-	//	}
+//			SDL_CondWait(_cond, _mutex);
+//		}
 //		else
 #endif
-//		{
+		{
 			// Drop the remaining of the audio data
-	      SDL_mutexV(_mutex);
-           return;
-//		}
+			SDL_mutexV(_mutex);
+
+			SLOG("Drop audio:%d", samples);
+
+			return;
+		}
 	}
 
 	_rbuf.write(finalWave, samples * 2);
@@ -94,23 +93,29 @@ inline void SoundSDL::write(u16 * finalWave, int length)
 	SDL_mutexV(_mutex);
 }
 
+#define FRAME_DURATION 50 // 200ms audio frame
 
 bool SoundSDL::init(long sampleRate)
 {
-	SDL_AudioSpec audio;
-	audio.freq = sampleRate;
-	audio.format = AUDIO_S16SYS;
-	audio.channels = 2;
-//	audio.samples = 1024;
-    audio.samples = 4096; // creates an echo delay stick with 1024!
-	audio.callback = soundCallback;
-	audio.userdata = this;
+	SDL_AudioSpec wantAudioSpec, gotAudioSpec;
 
-	if(SDL_OpenAudio(&audio, NULL))
+	wantAudioSpec.freq     = sampleRate;
+	wantAudioSpec.format   = AUDIO_S16SYS;
+	wantAudioSpec.channels = 2;
+	wantAudioSpec.samples  = 1024;
+//    wantAudioSpec.samples  = (sampleRate * wantAudioSpec.channels * FRAME_DURATION) / 1000;
+	wantAudioSpec.callback = soundCallback;
+	wantAudioSpec.userdata = this;
+
+	SLOG("Wanted:: freq=%d, format=%X, channels=%d, samples=%d", wantAudioSpec.freq, wantAudioSpec.format, wantAudioSpec.channels, wantAudioSpec.samples);
+
+	if(SDL_OpenAudio(&wantAudioSpec, &gotAudioSpec))
 	{
-		fprintf(stderr,"Failed to open audio: %s\n", SDL_GetError());
+		SLOG("Failed to open audio: %s", SDL_GetError());
 		return false;
 	}
+
+	SLOG("Got:: freq=%d, format=%X, channels=%d, samples=%d", gotAudioSpec.freq, gotAudioSpec.format, gotAudioSpec.channels, gotAudioSpec.samples);
 
 	_rbuf.reset(_delay * sampleRate * 2);
 

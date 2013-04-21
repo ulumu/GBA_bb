@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<emulation version="1">
+
+<!-- Load button: SDLK_0 -->
+<key x="0" y="0" width="64" height="64" sym="48" scancode="48">
+<label x="0" y="0" width="32" height="32"/>
+</key>
+
+<!-- Mute button: SDLK_PLUS -->
+<key x="445" y="55" width="32" height="32" sym="43" scancode="43"/>
+
+<!-- Save state button: SDLK_F8 -->
+<key x="432" y="0" width="48" height="48" sym="289" scancode="289"/>
+
+<!-- Restore state button: SDLK_F9 -->
+<key x="220" y="0" width="48" height="48" sym="290" scancode="290"/>
+
+</emulation>

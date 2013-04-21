@@ -16,6 +16,90 @@
 #define VERBOSE_AGBPRINT           512
 #define VERBOSE_SOUNDOUTPUT       1024
 
+// DISPCNT @ 0400:0000h
+// F	E	D	C	B	A	9	8	7	6	5	4	3	2 1 0
+// OW	W1	W0	Obj	BG3	BG2	BG1	BG0	FB	OM	HB	PS	GB	Mode
+//---------------------------------------------------------------------------
+//bits	name        define                          description
+//0-2	Mode		DCNT_MODEx. DCNT_MODE#			Sets video mode. 0, 1, 2 are tiled modes; 3, 4, 5 are bitmap modes.
+//  3	GB			DCNT_GB							Is set if cartridge is a GBC game. Read-only.
+//  4	PS			DCNT_PAGE						Page select. Modes 4 and 5 can use page flipping for smoother animation. This bit selects the displayed page (and allowing the other one to be drawn on without artifacts).
+//  5	HB			DCNT_OAM_HBL					Allows access to OAM in an HBlank. OAM is normally locked in VDraw. Will reduce the amount of sprite pixels rendered per line.
+//  6	OM			DCNT_OBJ_1D						Object mapping mode. Tile memory can be seen as a 32x32 matrix of tiles. When sprites are composed of multiple tiles high, this bit tells whether the next row of tiles lies beneath the previous, in correspondence with the matrix structure (2D mapping, OM=0), or right next to it, so that memory is arranged as an array of sprites (1D mapping OM=1). More on this in the sprite chapter.
+//  7	FB			DCNT_BLANK						Force a screen blank.
+//  8-B	BG0-BG3,Obj	DCNT_BGx,DCNT_OBJ,DCNT_LAYER#	Enables rendering of the corresponding background and sprites.
+//  D-F	W0-OW		DCNT_WINx, DCNT_WINOBJ			Enables the use of windows 0, 1 and Object window, respectively. Windows can be used to mask out certain areas (like the lamp did in Zelda:LTTP).
+#define DISPCNT_MODE		0x7
+#define DISPCNT_GB			(1 << 3)  // 0x08
+#define DISPCNT_PS			(1 << 4)  // 0x10
+#define DISPCNT_HB			(1 << 5)  // 0x20
+#define DISPCNT_OM			(1 << 6)  // 0x40
+#define DISPCNT_FB			(1 << 7)  // 0x80
+#define DISPCNT_BG0			(1 << 8)  // 0x100
+#define DISPCNT_BG1			(1 << 9)  // 0x200
+#define DISPCNT_BG2			(1 << 10) // 0x400
+#define DISPCNT_BG3			(1 << 11) // 0x800
+#define DISPCNT_OBJ			(1 << 12) // 0x1000
+#define DISPCNT_W0          (1 << 13) // 0x2000
+#define DISPCNT_W1          (1 << 14) // 0x4000
+#define DISPCNT_OW          (1 << 15) // 0x8000
+
+
+// DISPSTAT @ 0400:0004h
+// F E D C B A 9 8	7 6	 5	 4	 3	 2 	 1	 0
+//        VcT		 -	 VcI HbI VbI VcS HbS VbS
+//---------------------------------------------------------------------------
+// bits	name	define			description
+// 0	VbS		DSTAT_IN_VBL	VBlank status, read only. Will be set inside VBlank, clear in VDraw.
+// 1	HbS		DSTAT_IN_HBL	HBlank status, read only. Will be set inside HBlank.
+// 2	VcS		DSTAT_IN_VCT	VCount trigger status. Set if the current scanline matches the scanline trigger ( REG_VCOUNT == REG_DISPSTAT{8-F} )
+// 3	VbI		DSTAT_VBL_IRQ	VBlank interrupt request. If set, an interrupt will be fired at VBlank.
+// 4	HbI		DSTAT_HBL_IRQ	HBlank interrupt request.
+// 5	VcI		DSTAT_VCT_IRQ	VCount interrupt request. Fires interrupt if current scanline matches trigger value.
+// 8-F	VcT		DSTAT_VCT#		VCount trigger value. If the current scanline is at this value, bit 2 is set and an interrupt is fired if requested.
+#define DSTAT_IN_VBL        (1 << 0)  // 0x01
+#define DSTAT_IN_HBL        (1 << 1)  // 0x02
+#define DSTAT_IN_VCT        (1 << 2)  // 0x04
+#define DSTAT_VBL_IRQ       (1 << 3)  // 0x08
+#define DSTAT_HBL_IRQ       (1 << 4)  // 0x10
+#define DSTAT_VCT_IRQ       (1 << 5)  // 0x20
+#define DSTAT_VCT_NUM       (0xFF00)  // 0xFF00
+
+
+// BGxCNT @ 0400:0008 + 2x
+// F E	D	 C B A 9 8	7	 6	 5 4   3 2	 1 0
+// Sz	Wr	    SBB		CM	Mos	 -	   CBB	 Pr
+//---------------------------------------------------------------------------
+// bits	name	define				description
+// 0-1	Pr		BG_PRIO#			Priority. Determines drawing order of backgrounds.
+// 2-3	CBB		BG_CBB#				Character Base Block. Sets the charblock that serves as the base for character/tile indexing. Values: 0-3.
+// 6	Mos		BG_MOSAIC			Mosaic flag. Enables mosaic effect.
+// 7	CM		BG_4BPP, BG_8BPP	Color Mode. 16 colors (4bpp) if cleared; 256 colors (8bpp) if set.
+// 8-C	SBB		BG_SBB#				Screen Base Block. Sets the screenblock that serves as the base for screen-entry/map indexing. Values: 0-31.
+// D	Wr		BG_WRAP				Affine Wrapping flag. If set, affine background wrap around at their edges. Has no effect on regular backgrounds as they wrap around by default.
+// E-F	Sz		BG_SIZE#, 			See below Background Size. Regular and affine backgrounds have different sizes available to them. The sizes, in tiles and in pixels, can be found in table 9.5.
+//
+// regular bg sizes
+// Sz-flag	define			(tiles)	(pixels)
+// 00		BG_REG_32x32	 32x32	 256x256
+// 01		BG_REG_64x32	 64x32	 512x256
+// 10		BG_REG_32x64	 32x64	 256x512
+// 11		BG_REG_64x64	 64x64	 512x512
+//
+// affine bg sizes
+// Sz-flag	define			(tiles)	(pixels)
+// 00		BG_AFF_16x16	 16x16	 128x128
+// 01		BG_AFF_32x32	 32x32	 256x256
+// 10		BG_AFF_64x64	 64x64	 512x512
+// 11		BG_AFF_128x128	128x128	1024x1024
+#define BG_PRIO				((1 << 0)|(1 << 1))
+#define BG_CBB              ((1 << 2)|(1 << 3))
+#define BG_MOSAIC           (1 << 6)
+#define BG_8BPP             (1 << 7)
+#define BG_SBB              (0x1F00)
+#define BG_WRAP             (1 << 13)
+#define BG_SIZE             (0xC000)
+
 extern reg_pair reg[45];
 extern bool ioReadable[0x400];
 extern bool N_FLAG;

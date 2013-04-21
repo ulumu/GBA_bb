@@ -88,6 +88,7 @@ extern void systemShowSpeed(int);
 extern void system10Frames(int);
 extern void systemFrame();
 extern void systemGbBorderOn();
+extern void systemFrameInit(void);
 
 extern void Sm60FPS_Init();
 extern bool Sm60FPS_CanSkipFrame();

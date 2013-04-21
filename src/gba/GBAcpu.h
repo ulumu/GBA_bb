@@ -24,17 +24,37 @@ extern int thumbExecute();
     WRITE16LE(((u16 *)&ioMem[address]),value);\
   }\
 
+#if 0
 #define ARM_PREFETCH \
   {\
     cpuPrefetch[0] = CPUReadMemoryQuick(armNextPC);\
     cpuPrefetch[1] = CPUReadMemoryQuick(armNextPC+4);\
   }
+#else
+#define ARM_PREFETCH \
+  {\
+	register int  page = armNextPC >> 24;\
+	register u32 *addr = (u32 *)&map[page].address[(armNextPC) & map[page].mask];\
+    cpuPrefetch[0] = *addr++;\
+    cpuPrefetch[1] = *addr;\
+  }
+#endif
 
+#if 0
 #define THUMB_PREFETCH \
   {\
     cpuPrefetch[0] = CPUReadHalfWordQuick(armNextPC);\
     cpuPrefetch[1] = CPUReadHalfWordQuick(armNextPC+2);\
   }
+#else
+#define THUMB_PREFETCH \
+  {\
+	register int  page = armNextPC >> 24;\
+	register u16 *addr = (u16 *)&map[page].address[(armNextPC) & map[page].mask];\
+    cpuPrefetch[0] = *addr++;\
+    cpuPrefetch[1] = *addr;\
+  }
+#endif
 
 #define ARM_PREFETCH_NEXT \
   cpuPrefetch[1] = CPUReadMemoryQuick(armNextPC+4);
@@ -69,15 +89,42 @@ extern void CPUSoftwareInterrupt(int comment);
 
 #ifndef __GBAINLINE__
 
-int dataTicksAccess16(u32 address);
+#define BUSPREFETCH_STATE  2
+#define PAGESIZE           16
+
+typedef int (*codeTicksAccess_t)(int page);
+typedef int (*dataTicksAccess_t)(int page);
+
+extern dataTicksAccess_t fdataAccess16[PAGESIZE];
+extern dataTicksAccess_t fdataAccess32[PAGESIZE];
+extern codeTicksAccess_t fcodeAccess16[PAGESIZE];
+extern codeTicksAccess_t fcodeAccess32[PAGESIZE];
+
 int dataTicksAccess32(u32 address);
 int dataTicksAccessSeq16(u32 address);
 int dataTicksAccessSeq32(u32 address);
-int codeTicksAccess16(u32 address);
-int codeTicksAccess32(u32 address);
 int codeTicksAccessSeq16(u32 address);
 int codeTicksAccessSeq32(u32 address);
 void cpuMasterCodeCheck();
+
+inline int dataTicksAccess16(u32 address)
+{
+	int page = (address>>24) & 0xF;
+	return fdataAccess16[page](page);
+}
+
+inline int codeTicksAccess16(u32 address) // ARM NON SEQ
+{
+	int page = (address>>24) & 0xF;
+	return fcodeAccess16[page](page);
+}
+
+inline int codeTicksAccess32(u32 address) // ARM NON SEQ
+{
+	int page = (address>>24) & 0xF;
+	return fcodeAccess32[page](page);
+}
+
 
 #else
 // Waitstates when accessing data

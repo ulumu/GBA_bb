@@ -2,11 +2,11 @@
 #include "Globals.h"
 #include "GBAGfx.h"
 
-void mode5RenderLine()
+void mode5RenderLine(u32 *lineDest)
 {
-  if(DISPCNT & 0x0080) {
+  if(DISPCNT & DISPCNT_FB) {
     for(int x = 0; x < 240; x++) {
-      lineMix[x] = 0x7fff;
+      lineDest[x] = systemColorMap32[0x7fff];
     }
     gfxLastVCOUNT = VCOUNT;
     return;
@@ -78,17 +78,17 @@ void mode5RenderLine()
       }
     }
 
-    lineMix[x] = color;
+    lineDest[x] = systemColorMap32[color & 0xFFFF];
   }
   gfxBG2Changed = 0;
   gfxLastVCOUNT = VCOUNT;
 }
 
-void mode5RenderLineNoWindow()
+void mode5RenderLineNoWindow(u32 *lineDest)
 {
-  if(DISPCNT & 0x0080) {
+  if(DISPCNT & DISPCNT_FB) {
     for(int x = 0; x < 240; x++) {
-      lineMix[x] = 0x7fff;
+      lineDest[x] = systemColorMap32[0x7fff];
     }
     gfxLastVCOUNT = VCOUNT;
     return;
@@ -201,17 +201,17 @@ void mode5RenderLineNoWindow()
       }
     }
 
-    lineMix[x] = color;
+    lineDest[x] = systemColorMap32[color & 0xFFFF];
   }
   gfxBG2Changed = 0;
   gfxLastVCOUNT = VCOUNT;
 }
 
-void mode5RenderLineAll()
+void mode5RenderLineAll(u32 *lineDest)
 {
-  if(DISPCNT & 0x0080) {
+  if(DISPCNT & DISPCNT_FB) {
     for(int x = 0; x < 240; x++) {
-      lineMix[x] = 0x7fff;
+      lineDest[x] = systemColorMap32[0x7fff];
     }
     gfxLastVCOUNT = VCOUNT;
     return;
@@ -367,7 +367,7 @@ void mode5RenderLineAll()
       }
     }
 
-    lineMix[x] = color;
+    lineDest[x] = systemColorMap32[color & 0xFFFF];
   }
   gfxBG2Changed = 0;
   gfxLastVCOUNT = VCOUNT;

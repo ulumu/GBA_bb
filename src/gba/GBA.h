@@ -139,4 +139,16 @@ extern struct EmulatedSystem GBASystem;
 #include "EEprom.h"
 #include "Flash.h"
 
+
+extern u32 __lsl_imm;
+extern u32 __lsl_reg;
+extern u32 __lsr_imm;
+extern u32 __lsr_reg;
+extern u32 __asr_imm;
+extern u32 __asr_reg;
+extern u32 __ror_imm;
+extern u32 __ror_reg;
+extern u32 __imm;
+
+
 #endif // GBA_H

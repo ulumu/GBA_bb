@@ -688,7 +688,6 @@ int AutoLoadRom(void)
 	bbDialog     *dialog;
 	const char  **list = 0;
 	int           count;
-	bool          curBiosUsage = useBios;
 
 	extern void sdlWriteBattery();
 	extern void sdlReadBattery();
@@ -844,6 +843,8 @@ int AutoLoadRom(void)
 
 	SLOG("RomLoad: ok\n");
 	sdlReadBattery();
+
+	systemFrameInit();
 
 	pthread_mutex_unlock(&loader_mutex);
 	//drawText(screen, destPitch, 40, 150, szFile, 0);
@@ -1503,6 +1504,8 @@ static void sdlApplyPerImagePreferences()
 	buffer[5] = ']';
 	buffer[6] = 0;
 
+	SLOG("Loaded Game token <%s>", buffer);
+
 	char readBuffer[2048];
 
 	bool found = false;
@@ -1621,6 +1624,7 @@ void sdlWriteState(int num)
 
 	systemScreenMessage("State Backup");
 
+	systemFrameInit();
 	systemDrawScreen();
 }
 
@@ -1638,6 +1642,7 @@ void sdlReadState(int num)
 		systemScreenMessage("State Loaded");
 	}
 
+	systemFrameInit();
 	systemDrawScreen();
 
 	sdlStateWriteFlag = 0;
@@ -2050,14 +2055,14 @@ void sdlPollEvents()
 					change_rewind( (rewindTopPos - rewindPos) * ((rewindTopPos>rewindPos) ? +1:-1) );
 				break;
 			case SDLK_e:
-//				if(!(event.key.keysym.mod & MOD_NOCTRL) &&
-//						(event.key.keysym.mod & KMOD_CTRL)) {
+				if(!(event.key.keysym.mod & MOD_NOCTRL) &&
+						(event.key.keysym.mod & KMOD_CTRL)) {
 					cheatsEnabled = !cheatsEnabled;
 					systemConsoleMessage(cheatsEnabled?"Cheats on":"Cheats off");
-//				}
+				}
 				break;
 
-			case SDLK_o:
+			case SDLK_PLUS:
 				//   if(!(event.key.keysym.mod & MOD_NOCTRL) &&
 				//      (event.key.keysym.mod & KMOD_CTRL)
 				//	) {
@@ -2146,18 +2151,18 @@ void sdlPollEvents()
 				}
 				break;
 			case SDLK_g:
-				//   if(!(event.key.keysym.mod & MOD_NOCTRL) &&
-				//     (event.key.keysym.mod & KMOD_CTRL)) {
-				filterFunction = 0;
-				while (!filterFunction)
-				{
-					filter = (Filter)((filter + 1) % kInvalidFilter);
-					filterFunction = initFilter(filter, systemColorDepth, g_srcWidth);
-				}
-				if (getFilterEnlargeFactor(filter) != filter_enlarge)
-					sdlInitVideo();
-				systemScreenMessage(getFilterName(filter));
-				//  }
+				if(!(event.key.keysym.mod & MOD_NOCTRL) &&
+						(event.key.keysym.mod & KMOD_CTRL)) {
+					filterFunction = 0;
+					while (!filterFunction)
+					{
+						filter = (Filter)((filter + 1) % kInvalidFilter);
+						filterFunction = initFilter(filter, systemColorDepth, g_srcWidth);
+					}
+					if (getFilterEnlargeFactor(filter) != filter_enlarge)
+						sdlInitVideo();
+					systemScreenMessage(getFilterName(filter));
+				  }
 				break;
 			case SDLK_F11:
 #ifndef __QNXNTO__
@@ -2991,7 +2996,7 @@ int main(int argc, char **argv)
 	SLOG("Color depth: %d  update color maps ...", systemColorDepth);
 
 
-	utilUpdateSystemColorMaps();
+	utilUpdateSystemColorMaps(false);
 
 	if(delta == NULL) {
 		delta = (u8*)malloc(322*242*4);
@@ -3001,9 +3006,8 @@ int main(int argc, char **argv)
 	ifbFunction = initIFBFilter(ifbType, systemColorDepth);
 
 	emulating = 1;
-	renderedFrames = 0;
 
-	autoFrameSkipLastTime = throttleLastTime = systemGetClock();
+	systemFrameInit();
 
 	SDL_WM_SetCaption("VBA-M", NULL);
 
@@ -3249,15 +3253,84 @@ void systemShowSpeed(int speed)
 	}
 }
 
-void systemFrame()
+static int debugFrameCount = 0;
+static int debugTotalFrameCount = 0;
+static u32 debugFirstFrameTime = 0;
+static u32 debugElaspedTime  = 0;
+static int debugDriftTime = 0;
+static int debugSkip = 0;
+
+void systemFrameInit(void)
 {
+	autoFrameSkipLastTime = throttleLastTime = systemGetClock();
+	debugFrameCount       = 0;
+	debugTotalFrameCount  = 0;
+	debugFirstFrameTime   = autoFrameSkipLastTime;
+	debugElaspedTime      = autoFrameSkipLastTime;
+	debugDriftTime        = 16667; //16.667ms drift tolerance
+	debugSkip             = 0;
+
+	frameskipadjust       = 1;
+	systemFrameSkip       = 0;
+	renderedFrames        = 0;
+
 }
 
-#define MAX_SKIP_FRAME 2
+void systemFrame()
+{
+	u32 time = systemGetClock();
+	u32 totalElasped   = time - debugFirstFrameTime;
+	u32 curElaspedTime = time - debugElaspedTime;
+	int curSkip;
+	float curFps;
+
+	++debugFrameCount;
+	++debugTotalFrameCount;
+	systemFrameSkip = 0;
+#if 1
+	// 1 sec elasped
+	if ( curElaspedTime >= 1000)
+	{
+		debugDriftTime = ( (debugTotalFrameCount * 16667)-(totalElasped * 1000) );
+		curFps         = (float)debugFrameCount*1000.0/(float)curElaspedTime;
+		debugFrameCount   = 0;
+		debugElaspedTime += curElaspedTime;
+
+		if(autoFrameSkip)
+		{
+			curSkip = (int)((61.00 / (60.0 - curFps)) * 0.9);
+			if (curSkip <= 0)       curSkip = 0;
+			else if (curSkip < 2)   curSkip = 2;
+			else if (curSkip > 15)  curSkip = 15;
+
+			if (curSkip == 0)        debugSkip = 0;
+			else if (curSkip < debugSkip) debugSkip-=2;
+			else                     debugSkip = curSkip;
+		}
+		SLOG("Elasped:%dms, fps:%3.3f, drift:%3.2fms, skip every %d frame", curElaspedTime, curFps, (float)debugDriftTime/1000.0f, debugSkip);
+
+//		SLOG("%d %d %d %d %d %d %d %d %d", __lsl_imm, __lsl_reg, __lsr_imm, __lsr_reg, __asr_imm, __asr_reg, __ror_imm, __ror_reg, __imm);
+	}
+#endif
+#if 1
+	if(autoFrameSkip)
+	{
+		++frameskipadjust;
+		if (debugSkip && (frameskipadjust >= debugSkip))
+		{
+			frameskipadjust = 0;
+			systemFrameSkip = 1;
+		}
+	}
+#endif
+}
+
+#define MAX_SKIP_FRAME 1
 
 void system10Frames(int rate)
 {
 	u32 time = systemGetClock();
+#if 0
 	if(!wasPaused && autoFrameSkip) {
 		u32 diff = time - autoFrameSkipLastTime;
 		int speed = 100;
@@ -3268,14 +3341,14 @@ void system10Frames(int rate)
 		if(speed >= 98) {
 			frameskipadjust++;
 
-			if(frameskipadjust >= 3) {
+			if(frameskipadjust >= 2) {
 				frameskipadjust=0;
 				if(systemFrameSkip > 0)
 					systemFrameSkip--;
 			}
 		} else {
 			if(speed  < 80)
-				frameskipadjust -= (90 - speed)/5;
+				frameskipadjust -= (90 - speed)/2;
 			else if(systemFrameSkip < MAX_SKIP_FRAME)
 				frameskipadjust--;
 
@@ -3286,6 +3359,7 @@ void system10Frames(int rate)
 			}
 		}
 	}
+#endif
 	if(rewindMemory) {
 		if(++rewindCounter >= rewindTimer) {
 			rewindSaveNeeded = true;

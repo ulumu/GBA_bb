@@ -2,13 +2,13 @@
 #include "Globals.h"
 #include "GBAGfx.h"
 
-void mode3RenderLine()
+void mode3RenderLine(u32 *lineDest)
 {
   u16 *palette = (u16 *)paletteRAM;
 
-  if(DISPCNT & 0x80) {
+  if(DISPCNT & DISPCNT_FB) {
     for(int x = 0; x < 240; x++) {
-      lineMix[x] = 0x7fff;
+      lineDest[x] = systemColorMap32[0x7fff];
     }
     gfxLastVCOUNT = VCOUNT;
     return;
@@ -78,19 +78,19 @@ void mode3RenderLine()
       }
     }
 
-    lineMix[x] = color;
+    lineDest[x] = systemColorMap32[color & 0xFFFF];
   }
   gfxBG2Changed = 0;
   gfxLastVCOUNT = VCOUNT;
 }
 
-void mode3RenderLineNoWindow()
+void mode3RenderLineNoWindow(u32 *lineDest)
 {
   u16 *palette = (u16 *)paletteRAM;
 
-  if(DISPCNT & 0x80) {
+  if(DISPCNT & DISPCNT_FB) {
     for(int x = 0; x < 240; x++) {
-      lineMix[x] = 0x7fff;
+      lineDest[x] = systemColorMap32[0x7fff];
     }
     gfxLastVCOUNT = VCOUNT;
     return;
@@ -201,19 +201,19 @@ void mode3RenderLineNoWindow()
       }
     }
 
-    lineMix[x] = color;
+    lineDest[x] = systemColorMap32[color & 0xFFFF];
   }
   gfxBG2Changed = 0;
   gfxLastVCOUNT = VCOUNT;
 }
 
-void mode3RenderLineAll()
+void mode3RenderLineAll(u32 *lineDest)
 {
   u16 *palette = (u16 *)paletteRAM;
 
-  if(DISPCNT & 0x80) {
+  if(DISPCNT & DISPCNT_FB) {
     for(int x = 0; x < 240; x++) {
-      lineMix[x] = 0x7fff;
+      lineDest[x] = systemColorMap32[0x7fff];
     }
     gfxLastVCOUNT = VCOUNT;
     return;
@@ -367,7 +367,7 @@ void mode3RenderLineAll()
       }
     }
 
-    lineMix[x] = color;
+    lineDest[x] = systemColorMap32[color & 0xFFFF];
   }
   gfxBG2Changed = 0;
   gfxLastVCOUNT = VCOUNT;

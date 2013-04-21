@@ -68,7 +68,7 @@ u32 CPUReadMemory(u32 address)
 		break;
 	case 6:
 		address = (address & 0x1fffc);
-		if (((DISPCNT & 7) >2) && ((address & 0x1C000) == 0x18000))
+		if (((DISPCNT & DISPCNT_MODE) >2) && ((address & 0x1C000) == 0x18000))
 		{
 			value = 0;
 			break;
@@ -202,7 +202,7 @@ u32 CPUReadHalfWord(u32 address)
 		break;
 	case 6:
 		address = (address & 0x1fffe);
-		if (((DISPCNT & 7) >2) && ((address & 0x1C000) == 0x18000))
+		if (((DISPCNT & DISPCNT_MODE) >2) && ((address & 0x1C000) == 0x18000))
 		{
 			value = 0;
 			break;
@@ -297,7 +297,7 @@ u8 CPUReadByte(u32 address)
 		return paletteRAM[address & 0x3ff];
 	case 6:
 		address = (address & 0x1ffff);
-		if (((DISPCNT & 7) >2) && ((address & 0x1C000) == 0x18000))
+		if (((DISPCNT & DISPCNT_MODE) >2) && ((address & 0x1C000) == 0x18000))
 			return 0;
 		if ((address & 0x18000) == 0x18000)
 			address &= 0x17fff;
@@ -401,7 +401,7 @@ void CPUWriteMemory(u32 address, u32 value)
 		break;
 	case 0x06:
 		address = (address & 0x1fffc);
-		if (((DISPCNT & 7) >2) && ((address & 0x1C000) == 0x18000))
+		if (((DISPCNT & DISPCNT_MODE) >2) && ((address & 0x1C000) == 0x18000))
 			return;
 		if ((address & 0x18000) == 0x18000)
 			address &= 0x17fff;
@@ -497,7 +497,7 @@ void CPUWriteHalfWord(u32 address, u16 value)
 		break;
 	case 6:
 		address = (address & 0x1fffe);
-		if (((DISPCNT & 7) >2) && ((address & 0x1C000) == 0x18000))
+		if (((DISPCNT & DISPCNT_MODE) >2) && ((address & 0x1C000) == 0x18000))
 			return;
 		if ((address & 0x18000) == 0x18000)
 			address &= 0x17fff;
@@ -639,14 +639,14 @@ void CPUWriteByte(u32 address, u8 b)
 		break;
 	case 6:
 		address = (address & 0x1fffe);
-		if (((DISPCNT & 7) >2) && ((address & 0x1C000) == 0x18000))
+		if (((DISPCNT & DISPCNT_MODE) >2) && ((address & 0x1C000) == 0x18000))
 			return;
 		if ((address & 0x18000) == 0x18000)
 			address &= 0x17fff;
 
 		// no need to switch
 		// byte writes to OBJ VRAM are ignored
-		if ((address) < objTilesAddress[((DISPCNT&7)+1)>>2])
+		if ((address) < objTilesAddress[((DISPCNT&DISPCNT_MODE)+1)>>2])
 		{
 #ifdef BKPT_SUPPORT
 			if(freezeVRAM[address])

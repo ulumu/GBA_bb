@@ -23,6 +23,15 @@
 
 #include <SDL.h>
 
+extern int   g_logtofile;
+extern FILE *g_flogfile;
+
+#define SLOG(fmt, ...)  \
+		if (g_logtofile)    \
+		{    fprintf(g_flogfile, "[GBA-LOG][%s:%d]:"fmt"\n", __FUNCTION__, __LINE__, ##__VA_ARGS__); fflush(g_flogfile); } \
+	    else               \
+             fprintf(stderr, "[GBA-LOG][%s:%d]:"fmt"\n", __FUNCTION__, __LINE__, ##__VA_ARGS__)
+
 class SoundSDL: public SoundDriver
 {
 public:

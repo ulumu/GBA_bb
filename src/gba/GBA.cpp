@@ -30,6 +30,9 @@
 #define _stricmp strcasecmp
 #endif
 
+#define  TRACE_LOG_ENTRY(x, y)
+#define  TRACE_LOG_EXIT(x, y)
+
 extern int emulating;
 
 int SWITicks = 0;
@@ -108,7 +111,7 @@ u32 dma2Dest = 0;
 u32 dma3Source = 0;
 u32 dma3Dest = 0;
 void (*cpuSaveGameFunc)(u32,u8) = flashSaveDecide;
-void (*renderLine)() = mode0RenderLine;
+void (*renderLine)(u32 *) = mode0RenderLine;
 bool fxOn = false;
 bool windowOn = false;
 int frameCount = 0;
@@ -137,9 +140,9 @@ const bool isInRom [16]=
 { false, false, false, false, false, false, false, false,
   true, true, true, true, true, true, false, false };
 
-u8 memoryWait[16]      = { 0, 0, 2, 0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 4, 4, 0 };
+u8 memoryWait[16]      = { 0, 0, 2, 0, 0, 0, 0, 0, 4, 4, 4, 4,  4,  4, 4, 0 };
+u8 memoryWaitSeq[16]   = { 0, 0, 2, 0, 0, 0, 0, 0, 2, 2, 4, 4,  8,  8, 4, 0 };
 u8 memoryWait32[16]    = { 0, 0, 5, 0, 0, 1, 1, 0, 7, 7, 9, 9, 13, 13, 4, 0 };
-u8 memoryWaitSeq[16]   = { 0, 0, 2, 0, 0, 0, 0, 0, 2, 2, 4, 4, 8, 8, 4, 0 };
 u8 memoryWaitSeq32[16] = { 0, 0, 5, 0, 0, 1, 1, 0, 5, 5, 9, 9, 17, 17, 4, 0 };
 
 // The videoMemoryWait constants are used to add some waitstates
@@ -511,34 +514,34 @@ return cpuLoopTicks;
 
 void CPUUpdateWindow0()
 {
-int x00 = WIN0H>>8;
-int x01 = WIN0H & 255;
+	int x00 = WIN0H>>8;
+	int x01 = WIN0H & 255;
 
-if(x00 <= x01) {
-	for(int i = 0; i < 240; i++) {
-		gfxInWin0[i] = (i >= x00 && i < x01);
+	if(x00 <= x01) {
+		for(int i = 0; i < 240; i++) {
+			gfxInWin0[i] = (i >= x00 && i < x01);
+		}
+	} else {
+		for(int i = 0; i < 240; i++) {
+			gfxInWin0[i] = (i >= x00 || i < x01);
+		}
 	}
-} else {
-	for(int i = 0; i < 240; i++) {
-		gfxInWin0[i] = (i >= x00 || i < x01);
-	}
-}
 }
 
 void CPUUpdateWindow1()
 {
-int x00 = WIN1H>>8;
-int x01 = WIN1H & 255;
+	int x00 = WIN1H>>8;
+	int x01 = WIN1H & 255;
 
-if(x00 <= x01) {
-	for(int i = 0; i < 240; i++) {
-		gfxInWin1[i] = (i >= x00 && i < x01);
+	if(x00 <= x01) {
+		for(int i = 0; i < 240; i++) {
+			gfxInWin1[i] = (i >= x00 && i < x01);
+		}
+	} else {
+		for(int i = 0; i < 240; i++) {
+			gfxInWin1[i] = (i >= x00 || i < x01);
+		}
 	}
-} else {
-	for(int i = 0; i < 240; i++) {
-		gfxInWin1[i] = (i >= x00 || i < x01);
-	}
-}
 }
 
 extern u32 line0[240];
@@ -1473,17 +1476,29 @@ if ((mirroredRomSize <=0x800000) && (b))
 }
 }
 
+#define __DBGMODE(x) \
+	x;	\
+	SLOG(#x)
+
+#define __NORMALMODE(x) x
+
 void CPUUpdateRender()
 {
-switch(DISPCNT & 7) {
+switch(DISPCNT & DISPCNT_MODE) {
 case 0:
 	if((!fxOn && !windowOn && !(layerEnable & 0x8000)) ||
 			cpuDisableSfx)
-		renderLine = mode0RenderLine;
+	{
+		__NORMALMODE(renderLine = mode0RenderLine);
+	}
 	else if(fxOn && !windowOn && !(layerEnable & 0x8000))
-		renderLine = mode0RenderLineNoWindow;
+	{
+		__NORMALMODE(renderLine = mode0RenderLineNoWindow);
+	}
 	else
-		renderLine = mode0RenderLineAll;
+	{
+		__NORMALMODE(renderLine = mode0RenderLineAll);
+	}
 	break;
 case 1:
 	if((!fxOn && !windowOn && !(layerEnable & 0x8000)) ||
@@ -1584,9 +1599,19 @@ volatile u32 c = *b;
 #else
 static void CPUSwap(u32 *a, u32 *b)
 {
+#if 0//def __ARM_NEON__
+	__asm__ __volatile__ (
+		"    ldr    r7, %[a]\n\t"
+		"    swp    r8, r7, [%[b]]\n\t"
+		"    swp    r7, r8, [%[a]]\n\t"
+		:
+		: [a] "r" (a), [b] "r" (b)
+		: "r7", "r8" );
+#else
 	u32 c = *b;
 	*b = *a;
 	*a = c;
+#endif
 }
 #endif
 
@@ -2046,16 +2071,16 @@ break;
 void CPUCompareVCOUNT()
 {
 	if(VCOUNT == (DISPSTAT >> 8)) {
-		DISPSTAT |= 4;
-		UPDATE_REG(0x04, DISPSTAT);
+		DISPSTAT |= DSTAT_IN_VCT;
+		UPDATE_REG(DSTAT_IN_VCT, DISPSTAT);
 
-		if(DISPSTAT & 0x20) {
+		if(DISPSTAT & DSTAT_VCT_IRQ) {
 			IF |= 4;
 			UPDATE_REG(0x202, IF);
 		}
 	} else {
 		DISPSTAT &= 0xFFFB;
-		UPDATE_REG(0x4, DISPSTAT);
+		UPDATE_REG(DSTAT_IN_VCT, DISPSTAT);
 	}
 	if (layerEnableDelay>0)
 	{
@@ -2407,11 +2432,11 @@ void CPUUpdateRegister(u32 address, u16 value)
 	{ // we need to place the following code in { } because we declare & initialize variables in a case statement
 		if((value & 7) > 5) {
 			// display modes above 0-5 are prohibited
-			DISPCNT = (value & 7);
+			DISPCNT = (value & DISPCNT_MODE);
 		}
-		bool change = (0 != ((DISPCNT ^ value) & 0x80));
-		bool changeBG = (0 != ((DISPCNT ^ value) & 0x0F00));
-		u16 changeBGon = ((~DISPCNT) & value) & 0x0F00; // these layers are being activated
+		bool change    = (0 != ((DISPCNT ^ value) & DISPCNT_FB));
+		bool changeBG  = (0 != ((DISPCNT ^ value) & (DISPCNT_BG0|DISPCNT_BG1|DISPCNT_BG2|DISPCNT_BG3) ) );
+		u16 changeBGon = ((~DISPCNT) & value) & (DISPCNT_BG0|DISPCNT_BG1|DISPCNT_BG2|DISPCNT_BG3); // these layers are being activated
 
 		DISPCNT = (value & 0xFFF7); // bit 3 can only be accessed by the BIOS to enable GBC mode
 		UPDATE_REG(0x00, DISPCNT);
@@ -2426,12 +2451,12 @@ void CPUUpdateRegister(u32 address, u16 value)
 
 		windowOn = (layerEnable & 0x6000) ? true : false;
 		if(change && !((value & 0x80))) {
-			if(!(DISPSTAT & 1)) {
+			if(!(DISPSTAT & DSTAT_IN_VBL)) {
 				lcdTicks = 1008;
 				//      VCOUNT = 0;
 				//      UPDATE_REG(0x06, VCOUNT);
 				DISPSTAT &= 0xFFFC;
-				UPDATE_REG(0x04, DISPSTAT);
+				UPDATE_REG(DISPCNT_PS, DISPSTAT);
 				CPUCompareVCOUNT();
 			}
 			//        (*renderLine)();
@@ -2444,8 +2469,8 @@ void CPUUpdateRegister(u32 address, u16 value)
 		break;
 	}
 	case 0x04:
-		DISPSTAT = (value & 0xFF38) | (DISPSTAT & 7);
-		UPDATE_REG(0x04, DISPSTAT);
+		DISPSTAT = (value & 0xFF38) | (DISPSTAT & (DSTAT_IN_VBL|DSTAT_IN_HBL|DSTAT_IN_VCT));
+		UPDATE_REG(DSTAT_IN_VCT, DISPSTAT);
 		break;
 	case 0x06:
 		// not writable
@@ -3149,7 +3174,7 @@ void CPUInit(const char *biosFileName, bool useBiosFile)
 		// clean io memory
 		memset(ioMem, 0, 0x400);
 
-		DISPCNT  = 0x0080;
+		DISPCNT  = DISPCNT_FB;
 		DISPSTAT = 0x0000;
 		VCOUNT   = (useBios && !skipBios) ? 0 :0x007E;
 		BG0CNT   = 0x0000;
@@ -3446,370 +3471,370 @@ void CPUInit(const char *biosFileName, bool useBiosFile)
 		biosProtected[3] = 0xe5;
 	}
 
-	void CPULoop(int ticks)
-	{
-		int clockTicks;
-		int timerOverflow = 0;
-		// variable used by the CPU core
-		cpuTotalTicks = 0;
+void CPULoop(int ticks)
+{
+	int clockTicks;
+	int timerOverflow = 0;
+	// variable used by the CPU core
+	cpuTotalTicks = 0;
 
-		// shuffle2: what's the purpose?
-		if(gba_link_enabled)
-			cpuNextEvent = 1;
+	// shuffle2: what's the purpose?
+	if(gba_link_enabled)
+		cpuNextEvent = 1;
 
-		cpuBreakLoop = false;
-		cpuNextEvent = CPUUpdateTicks();
-		if(cpuNextEvent > ticks)
-			cpuNextEvent = ticks;
+	cpuBreakLoop = false;
+	cpuNextEvent = CPUUpdateTicks();
+	if(cpuNextEvent > ticks)
+		cpuNextEvent = ticks;
 
 
-		for(;;) {
+	for(;;) {
 #ifndef FINAL_VERSION
-			if(systemDebug) {
-				if(systemDebug >= 10 && !holdState) {
-					CPUUpdateCPSR();
+		if(systemDebug) {
+			if(systemDebug >= 10 && !holdState) {
+				CPUUpdateCPSR();
 #ifdef BKPT_SUPPORT
-					if (debugger_last)
-					{
-						winlog("R00=%08x R01=%08x R02=%08x R03=%08x R04=%08x R05=%08x R06=%08x R07=%08x R08=%08x R09=%08x R10=%08x R11=%08x R12=%08x R13=%08x R14=%08x R15=%08x R16=%08x R17=%08x\n",
-								oldreg[0], oldreg[1], oldreg[2], oldreg[3], oldreg[4], oldreg[5],
-								oldreg[6], oldreg[7], oldreg[8], oldreg[9], oldreg[10], oldreg[11],
-								oldreg[12], oldreg[13], oldreg[14], oldreg[15], oldreg[16],
-								oldreg[17]);
-					}
-#endif
+				if (debugger_last)
+				{
 					winlog("R00=%08x R01=%08x R02=%08x R03=%08x R04=%08x R05=%08x R06=%08x R07=%08x R08=%08x R09=%08x R10=%08x R11=%08x R12=%08x R13=%08x R14=%08x R15=%08x R16=%08x R17=%08x\n",
-							reg[0].I, reg[1].I, reg[2].I, reg[3].I, reg[4].I, reg[5].I,
-							reg[6].I, reg[7].I, reg[8].I, reg[9].I, reg[10].I, reg[11].I,
-							reg[12].I, reg[13].I, reg[14].I, reg[15].I, reg[16].I,
-							reg[17].I);
-				} else if(!holdState) {
-					winlog("PC=%08x\n", armNextPC);
+							oldreg[0], oldreg[1], oldreg[2], oldreg[3], oldreg[4], oldreg[5],
+							oldreg[6], oldreg[7], oldreg[8], oldreg[9], oldreg[10], oldreg[11],
+							oldreg[12], oldreg[13], oldreg[14], oldreg[15], oldreg[16],
+							oldreg[17]);
 				}
+#endif
+				winlog("R00=%08x R01=%08x R02=%08x R03=%08x R04=%08x R05=%08x R06=%08x R07=%08x R08=%08x R09=%08x R10=%08x R11=%08x R12=%08x R13=%08x R14=%08x R15=%08x R16=%08x R17=%08x\n",
+						reg[0].I, reg[1].I, reg[2].I, reg[3].I, reg[4].I, reg[5].I,
+						reg[6].I, reg[7].I, reg[8].I, reg[9].I, reg[10].I, reg[11].I,
+						reg[12].I, reg[13].I, reg[14].I, reg[15].I, reg[16].I,
+						reg[17].I);
+			} else if(!holdState) {
+				winlog("PC=%08x\n", armNextPC);
 			}
+		}
 #endif /* FINAL_VERSION */
 
-			if(!holdState && !SWITicks) {
-				if(armState) {
-					if (!armExecute())
-						return;
-				} else {
-					if (!thumbExecute())
-						return;
-				}
-				clockTicks = 0;
-			} else
-				clockTicks = CPUUpdateTicks();
+		if(!holdState && !SWITicks)
+		{
+			if(armState) {
+				if (!armExecute())
+					return;
+			} else {
+				if (!thumbExecute())
+					return;
+			}
+			clockTicks = 0;
+		} else
+		{
+			clockTicks = CPUUpdateTicks();
+		}
 
-			cpuTotalTicks += clockTicks;
+		cpuTotalTicks += clockTicks;
 
+		if(cpuTotalTicks >= cpuNextEvent)
+		{
+			int remainingTicks = cpuTotalTicks - cpuNextEvent;
 
-			if(cpuTotalTicks >= cpuNextEvent) {
-				int remainingTicks = cpuTotalTicks - cpuNextEvent;
+			if (SWITicks)
+			{
+				SWITicks-=clockTicks;
+				if (SWITicks<0)
+					SWITicks = 0;
+			}
 
-				if (SWITicks)
-				{
-					SWITicks-=clockTicks;
-					if (SWITicks<0)
-						SWITicks = 0;
-				}
-
-				clockTicks = cpuNextEvent;
-				cpuTotalTicks = 0;
-				cpuDmaHack = false;
+			clockTicks = cpuNextEvent;
+			cpuTotalTicks = 0;
+			cpuDmaHack = false;
 
 updateLoop:
 
-				if (IRQTicks)
-				{
-					IRQTicks -= clockTicks;
-					if (IRQTicks<0)
-						IRQTicks = 0;
-				}
+			if (IRQTicks)
+			{
+				IRQTicks -= clockTicks;
+				if (IRQTicks<0)
+					IRQTicks = 0;
+			}
 
-				lcdTicks -= clockTicks;
+			lcdTicks -= clockTicks;
 
 
-				if(lcdTicks <= 0) {
-					if(DISPSTAT & 1) { // V-BLANK
-						// if in V-Blank mode, keep computing...
-						if(DISPSTAT & 2) {
-							lcdTicks += 1008;
-							VCOUNT++;
-							UPDATE_REG(0x06, VCOUNT);
-							DISPSTAT &= 0xFFFD;
-							UPDATE_REG(0x04, DISPSTAT);
-							CPUCompareVCOUNT();
-						} else {
-							lcdTicks += 224;
-							DISPSTAT |= 2;
-							UPDATE_REG(0x04, DISPSTAT);
-							if(DISPSTAT & 16) {
-								IF |= 2;
-								UPDATE_REG(0x202, IF);
-							}
-						}
-
-						if(VCOUNT >= 228) { //Reaching last line
-							DISPSTAT &= 0xFFFC;
-							UPDATE_REG(0x04, DISPSTAT);
-							VCOUNT = 0;
-							UPDATE_REG(0x06, VCOUNT);
-							CPUCompareVCOUNT();
-						}
+			if(lcdTicks <= 0) {
+				if(DISPSTAT & DSTAT_IN_VBL) { // V-BLANK
+					// if in V-Blank mode, keep computing...
+					if(DISPSTAT & DSTAT_IN_HBL) {
+						lcdTicks += 1008;
+						VCOUNT++;
+						UPDATE_REG(0x06, VCOUNT);
+						DISPSTAT &= 0xFFFD;
+						UPDATE_REG(DSTAT_IN_VCT, DISPSTAT);
+						CPUCompareVCOUNT();
 					} else {
-						int framesToSkip = systemFrameSkip;
-						if(speedup)
-							framesToSkip = 9; // try 6 FPS during speedup
+						lcdTicks += 224;
+						DISPSTAT |= DSTAT_IN_HBL;
+						UPDATE_REG(DSTAT_IN_VCT, DISPSTAT);
+						if(DISPSTAT & DSTAT_HBL_IRQ) {
+							IF |= 2;
+							UPDATE_REG(0x202, IF);
+						}
+					}
 
-						if(DISPSTAT & 2) {
-							// if in H-Blank, leave it and move to drawing mode
-							VCOUNT++;
-							UPDATE_REG(0x06, VCOUNT);
+					if(VCOUNT >= 228) { //Reaching last line
+						DISPSTAT &= 0xFFFC;
+						UPDATE_REG(DSTAT_IN_VCT, DISPSTAT);
+						VCOUNT = 0;
+						UPDATE_REG(0x06, VCOUNT);
+						CPUCompareVCOUNT();
+					}
+				} else {
+					int framesToSkip = systemFrameSkip;
+					if(speedup)
+						framesToSkip = 9; // try 6 FPS during speedup
 
-							lcdTicks += 1008;
-							DISPSTAT &= 0xFFFD;
-							if(VCOUNT == 160) {
-								count++;
-								systemFrame();
+					if(DISPSTAT & DSTAT_IN_HBL) {
+						// if in H-Blank, leave it and move to drawing mode
+						VCOUNT++;
+						UPDATE_REG(0x06, VCOUNT);
 
-								if((count % 10) == 0) {
-									system10Frames(60);
-								}
-								/*
-		  if(count == 60) {
-			u32 time = systemGetClock();
-			if(time != lastTime) {
-			  u32 t = 100000/(time - lastTime);
-			  systemShowSpeed(t);
-			} else
-			  systemShowSpeed(0);
-			lastTime = time;
-			count = 0;
-		  }
-								 */
-								u32 joy = 0;
-								// update joystick information
-								if(systemReadJoypads())
-									// read default joystick
-									joy = systemReadJoypad(-1);
-								P1 = 0x03FF ^ (joy & 0x3FF);
-								if(cpuEEPROMSensorEnabled)
-									systemUpdateMotionSensor();
-								UPDATE_REG(0x130, P1);
-								u16 P1CNT = READ16LE(((u16 *)&ioMem[0x132]));
-								// this seems wrong, but there are cases where the game
-								// can enter the stop state without requesting an IRQ from
-								// the joypad.
-								if((P1CNT & 0x4000) || stopState) {
-									u16 p1 = (0x3FF ^ P1) & 0x3FF;
-									if(P1CNT & 0x8000) {
-										if(p1 == (P1CNT & 0x3FF)) {
-											IF |= 0x1000;
-											UPDATE_REG(0x202, IF);
-										}
-									} else {
-										if(p1 & P1CNT) {
-											IF |= 0x1000;
-											UPDATE_REG(0x202, IF);
-										}
-									}
-								}
+						lcdTicks += 1008;
+						DISPSTAT &= 0xFFFD;
+						if(VCOUNT == 160) {
+							count++;
+							systemFrame();
 
-								u32 ext = (joy >> 10);
-								// If no (m) code is enabled, apply the cheats at each LCDline
-#ifndef __QNXNTO__
-								if((cheatsEnabled) && (mastercode==0))
-									remainingTicks += cheatsCheckKeys(P1^0x3FF, ext);
-								speedup = (ext & 1) ? true : false;
-								capture = (ext & 2) ? true : false;
-
-								if(capture && !capturePrevious) {
-									captureNumber++;
-									systemScreenCapture(captureNumber);
-								}
-								capturePrevious = capture;
-#endif
-								DISPSTAT |= 1;
-								DISPSTAT &= 0xFFFD;
-								UPDATE_REG(0x04, DISPSTAT);
-								if(DISPSTAT & 0x0008) {
-									IF |= 1;
-									UPDATE_REG(0x202, IF);
-								}
-								CPUCheckDMA(1, 0x0f);
-								if(frameCount >= framesToSkip) {
-									systemDrawScreen();
-									frameCount = 0;
+							if((count % 10) == 0) {
+								system10Frames(60);
+							}
+#if 0
+							if(count == 60) {
+								u32 time = systemGetClock();
+								if(time != lastTime) {
+									u32 t = 100000/(time - lastTime);
+									systemShowSpeed(t);
 								} else
-									frameCount++;
-								if(systemPauseOnFrame())
-									ticks = 0;
+									systemShowSpeed(0);
+								lastTime = time;
+								count = 0;
 							}
+#endif
+							u32 joy = 0;
+							// update joystick information
+							if(systemReadJoypads())
+								// read default joystick
+								joy = systemReadJoypad(-1);
+							P1 = 0x03FF ^ (joy & 0x3FF);
+							if(cpuEEPROMSensorEnabled)
+								systemUpdateMotionSensor();
+							UPDATE_REG(0x130, P1);
+							u16 P1CNT = READ16LE(((u16 *)&ioMem[0x132]));
 
-							UPDATE_REG(0x04, DISPSTAT);
-							CPUCompareVCOUNT();
-
-						} else {
-							if(frameCount >= framesToSkip)
-							{
-								(*renderLine)();
-								switch(systemColorDepth) {
-								case 16:
-								{
-									u16 *dest = (u16 *)pix + 242 * (VCOUNT+1);
-									for(int x = 0; x < 240;) {
-										*dest++ = systemColorMap16[lineMix[x++]&0xFFFF];
-										*dest++ = systemColorMap16[lineMix[x++]&0xFFFF];
-										*dest++ = systemColorMap16[lineMix[x++]&0xFFFF];
-										*dest++ = systemColorMap16[lineMix[x++]&0xFFFF];
-
-										*dest++ = systemColorMap16[lineMix[x++]&0xFFFF];
-										*dest++ = systemColorMap16[lineMix[x++]&0xFFFF];
-										*dest++ = systemColorMap16[lineMix[x++]&0xFFFF];
-										*dest++ = systemColorMap16[lineMix[x++]&0xFFFF];
-
-										*dest++ = systemColorMap16[lineMix[x++]&0xFFFF];
-										*dest++ = systemColorMap16[lineMix[x++]&0xFFFF];
-										*dest++ = systemColorMap16[lineMix[x++]&0xFFFF];
-										*dest++ = systemColorMap16[lineMix[x++]&0xFFFF];
-
-										*dest++ = systemColorMap16[lineMix[x++]&0xFFFF];
-										*dest++ = systemColorMap16[lineMix[x++]&0xFFFF];
-										*dest++ = systemColorMap16[lineMix[x++]&0xFFFF];
-										*dest++ = systemColorMap16[lineMix[x++]&0xFFFF];
+							// this seems wrong, but there are cases where the game
+							// can enter the stop state without requesting an IRQ from
+							// the joypad.
+							if((P1CNT & 0x4000) || stopState) {
+								u16 p1 = (0x3FF ^ P1) & 0x3FF;
+								if(P1CNT & 0x8000) {
+									if(p1 == (P1CNT & 0x3FF)) {
+										IF |= 0x1000;
+										UPDATE_REG(0x202, IF);
 									}
-									// for filters that read past the screen
-									*dest++ = 0;
-								}
-								break;
-								case 24:
-								{
-									u8 *dest = (u8 *)pix + 240 * VCOUNT * 3;
-									for(int x = 0; x < 240;) {
-										*((u32 *)dest) = systemColorMap32[lineMix[x++] & 0xFFFF];
-										dest += 3;
-										*((u32 *)dest) = systemColorMap32[lineMix[x++] & 0xFFFF];
-										dest += 3;
-										*((u32 *)dest) = systemColorMap32[lineMix[x++] & 0xFFFF];
-										dest += 3;
-										*((u32 *)dest) = systemColorMap32[lineMix[x++] & 0xFFFF];
-										dest += 3;
-
-										*((u32 *)dest) = systemColorMap32[lineMix[x++] & 0xFFFF];
-										dest += 3;
-										*((u32 *)dest) = systemColorMap32[lineMix[x++] & 0xFFFF];
-										dest += 3;
-										*((u32 *)dest) = systemColorMap32[lineMix[x++] & 0xFFFF];
-										dest += 3;
-										*((u32 *)dest) = systemColorMap32[lineMix[x++] & 0xFFFF];
-										dest += 3;
-
-										*((u32 *)dest) = systemColorMap32[lineMix[x++] & 0xFFFF];
-										dest += 3;
-										*((u32 *)dest) = systemColorMap32[lineMix[x++] & 0xFFFF];
-										dest += 3;
-										*((u32 *)dest) = systemColorMap32[lineMix[x++] & 0xFFFF];
-										dest += 3;
-										*((u32 *)dest) = systemColorMap32[lineMix[x++] & 0xFFFF];
-										dest += 3;
-
-										*((u32 *)dest) = systemColorMap32[lineMix[x++] & 0xFFFF];
-										dest += 3;
-										*((u32 *)dest) = systemColorMap32[lineMix[x++] & 0xFFFF];
-										dest += 3;
-										*((u32 *)dest) = systemColorMap32[lineMix[x++] & 0xFFFF];
-										dest += 3;
-										*((u32 *)dest) = systemColorMap32[lineMix[x++] & 0xFFFF];
-										dest += 3;
-									}
-								}
-								break;
-								case 32:
-								{
-									u32 *dest = (u32 *)pix + 241 * (VCOUNT+1);
-									for(int x = 0; x < 240; ) {
-										*dest++ = systemColorMap32[lineMix[x++] & 0xFFFF];
-										*dest++ = systemColorMap32[lineMix[x++] & 0xFFFF];
-										*dest++ = systemColorMap32[lineMix[x++] & 0xFFFF];
-										*dest++ = systemColorMap32[lineMix[x++] & 0xFFFF];
-
-										*dest++ = systemColorMap32[lineMix[x++] & 0xFFFF];
-										*dest++ = systemColorMap32[lineMix[x++] & 0xFFFF];
-										*dest++ = systemColorMap32[lineMix[x++] & 0xFFFF];
-										*dest++ = systemColorMap32[lineMix[x++] & 0xFFFF];
-
-										*dest++ = systemColorMap32[lineMix[x++] & 0xFFFF];
-										*dest++ = systemColorMap32[lineMix[x++] & 0xFFFF];
-										*dest++ = systemColorMap32[lineMix[x++] & 0xFFFF];
-										*dest++ = systemColorMap32[lineMix[x++] & 0xFFFF];
-
-										*dest++ = systemColorMap32[lineMix[x++] & 0xFFFF];
-										*dest++ = systemColorMap32[lineMix[x++] & 0xFFFF];
-										*dest++ = systemColorMap32[lineMix[x++] & 0xFFFF];
-										*dest++ = systemColorMap32[lineMix[x++] & 0xFFFF];
-									}
-								}
-								break;
-								}
-							}
-							// entering H-Blank
-							DISPSTAT |= 2;
-							UPDATE_REG(0x04, DISPSTAT);
-							lcdTicks += 224;
-							CPUCheckDMA(2, 0x0f);
-							if(DISPSTAT & 16) {
-								IF |= 2;
-								UPDATE_REG(0x202, IF);
-							}
-						}
-					}
-				}
-
-				// we shouldn't be doing sound in stop state, but we loose synchronization
-				// if sound is disabled, so in stop state, soundTick will just produce
-				// mute sound
-				soundTicks -= clockTicks;
-				if(soundTicks <= 0) {
-					psoundTickfn();
-					soundTicks += SOUND_CLOCK_TICKS;
-				}
-
-				if(!stopState) {
-					if(timer0On) {
-						timer0Ticks -= clockTicks;
-						if(timer0Ticks <= 0) {
-							timer0Ticks += (0x10000 - timer0Reload) << timer0ClockReload;
-							timerOverflow |= 1;
-							soundTimerOverflow(0);
-							if(TM0CNT & 0x40) {
-								IF |= 0x08;
-								UPDATE_REG(0x202, IF);
-							}
-						}
-						TM0D = 0xFFFF - (timer0Ticks >> timer0ClockReload);
-						UPDATE_REG(0x100, TM0D);
-					}
-
-					if(timer1On) {
-						if(TM1CNT & 4) {
-							if(timerOverflow & 1) {
-								TM1D++;
-								if(TM1D == 0) {
-									TM1D += timer1Reload;
-									timerOverflow |= 2;
-									soundTimerOverflow(1);
-									if(TM1CNT & 0x40) {
-										IF |= 0x10;
+								} else {
+									if(p1 & P1CNT) {
+										IF |= 0x1000;
 										UPDATE_REG(0x202, IF);
 									}
 								}
-								UPDATE_REG(0x104, TM1D);
 							}
-						} else {
-							timer1Ticks -= clockTicks;
-							if(timer1Ticks <= 0) {
-								timer1Ticks += (0x10000 - timer1Reload) << timer1ClockReload;
+
+							u32 ext = (joy >> 10);
+							// If no (m) code is enabled, apply the cheats at each LCDline
+#ifndef __QNXNTO__
+							if((cheatsEnabled) && (mastercode==0))
+								remainingTicks += cheatsCheckKeys(P1^0x3FF, ext);
+							speedup = (ext & 1) ? true : false;
+							capture = (ext & 2) ? true : false;
+
+							if(capture && !capturePrevious) {
+								captureNumber++;
+								systemScreenCapture(captureNumber);
+							}
+							capturePrevious = capture;
+#endif
+							DISPSTAT |= DSTAT_IN_VBL;
+							DISPSTAT &= 0xFFFD;
+							UPDATE_REG(DSTAT_IN_VCT, DISPSTAT);
+							if(DISPSTAT & DSTAT_VBL_IRQ) {
+								IF |= 1;
+								UPDATE_REG(0x202, IF);
+							}
+							CPUCheckDMA(1, 0x0f);
+							systemDrawScreen();
+							if(frameCount >= framesToSkip) {
+								frameCount = 0;
+							} else
+								frameCount++;
+							if(systemPauseOnFrame())
+								ticks = 0;
+						} //if(VCOUNT == 160)
+
+						UPDATE_REG(DSTAT_IN_VCT, DISPSTAT);
+						CPUCompareVCOUNT();
+
+					} else {
+						if(frameCount >= framesToSkip)
+						{
+							// HACK: only support 32bit for now
+							if (systemColorDepth == 32)
+							{
+								u32 *dest = (u32 *)pix + 241 * (VCOUNT+1);
+								(*renderLine)(dest);
+							}
+#if 0
+							switch(systemColorDepth) {
+							case 16:
+							{
+								u16 *dest = (u16 *)pix + 242 * (VCOUNT+1);
+								for(int x = 0; x < 240;) {
+									*dest++ = systemColorMap16[lineMix[x++]];
+									*dest++ = systemColorMap16[lineMix[x++]];
+									*dest++ = systemColorMap16[lineMix[x++]];
+									*dest++ = systemColorMap16[lineMix[x++]];
+
+									*dest++ = systemColorMap16[lineMix[x++]];
+									*dest++ = systemColorMap16[lineMix[x++]];
+									*dest++ = systemColorMap16[lineMix[x++]];
+									*dest++ = systemColorMap16[lineMix[x++]];
+
+									*dest++ = systemColorMap16[lineMix[x++]];
+									*dest++ = systemColorMap16[lineMix[x++]];
+									*dest++ = systemColorMap16[lineMix[x++]];
+									*dest++ = systemColorMap16[lineMix[x++]];
+
+									*dest++ = systemColorMap16[lineMix[x++]];
+									*dest++ = systemColorMap16[lineMix[x++]];
+									*dest++ = systemColorMap16[lineMix[x++]];
+									*dest++ = systemColorMap16[lineMix[x++]];
+								}
+								// for filters that read past the screen
+								*dest++ = 0;
+							}
+							break;
+							case 24:
+							{
+								u8  *dest = (u8 *)pix + 240 * VCOUNT * 3;
+								for(int x = 0; x < 240; ) {
+									*((u32 *)dest) = systemColorMap32[lineMix[x++]];
+									dest += 3;
+									*((u32 *)dest) = systemColorMap32[lineMix[x++]];
+									dest += 3;
+									*((u32 *)dest) = systemColorMap32[lineMix[x++]];
+									dest += 3;
+									*((u32 *)dest) = systemColorMap32[lineMix[x++]];
+									dest += 3;
+
+									*((u32 *)dest) = systemColorMap32[lineMix[x++]];
+									dest += 3;
+									*((u32 *)dest) = systemColorMap32[lineMix[x++]];
+									dest += 3;
+									*((u32 *)dest) = systemColorMap32[lineMix[x++]];
+									dest += 3;
+									*((u32 *)dest) = systemColorMap32[lineMix[x++]];
+									dest += 3;
+
+									*((u32 *)dest) = systemColorMap32[lineMix[x++]];
+									dest += 3;
+									*((u32 *)dest) = systemColorMap32[lineMix[x++]];
+									dest += 3;
+									*((u32 *)dest) = systemColorMap32[lineMix[x++]];
+									dest += 3;
+									*((u32 *)dest) = systemColorMap32[lineMix[x++]];
+									dest += 3;
+
+									*((u32 *)dest) = systemColorMap32[lineMix[x++]];
+									dest += 3;
+									*((u32 *)dest) = systemColorMap32[lineMix[x++]];
+									dest += 3;
+									*((u32 *)dest) = systemColorMap32[lineMix[x++]];
+									dest += 3;
+									*((u32 *)dest) = systemColorMap32[lineMix[x++]];
+									dest += 3;
+								}
+							}
+							break;
+							case 32:
+							{
+								u32 *dest = (u32 *)pix + 241 * (VCOUNT+1);
+
+								for(int x = 0; x < 240;) {
+									*dest++ = systemColorMap32[lineMix[x++]];
+									*dest++ = systemColorMap32[lineMix[x++]];
+									*dest++ = systemColorMap32[lineMix[x++]];
+									*dest++ = systemColorMap32[lineMix[x++]];
+
+									*dest++ = systemColorMap32[lineMix[x++]];
+									*dest++ = systemColorMap32[lineMix[x++]];
+									*dest++ = systemColorMap32[lineMix[x++]];
+									*dest++ = systemColorMap32[lineMix[x++]];
+
+									*dest++ = systemColorMap32[lineMix[x++]];
+									*dest++ = systemColorMap32[lineMix[x++]];
+									*dest++ = systemColorMap32[lineMix[x++]];
+									*dest++ = systemColorMap32[lineMix[x++]];
+
+									*dest++ = systemColorMap32[lineMix[x++]];
+									*dest++ = systemColorMap32[lineMix[x++]];
+									*dest++ = systemColorMap32[lineMix[x++]];
+									*dest++ = systemColorMap32[lineMix[x++]];
+								}
+							}
+							break;
+							}
+#endif
+						}
+
+						// entering H-Blank
+						DISPSTAT |= DSTAT_IN_HBL;
+						UPDATE_REG(DSTAT_IN_VCT, DISPSTAT);
+						lcdTicks += 224;
+						CPUCheckDMA(2, 0x0f);
+						if(DISPSTAT & DSTAT_HBL_IRQ) {
+							IF |= 2;
+							UPDATE_REG(0x202, IF);
+						}
+					}
+				}
+			}
+
+			// we shouldn't be doing sound in stop state, but we loose synchronization
+			// if sound is disabled, so in stop state, soundTick will just produce
+			// mute sound
+			soundTicks -= clockTicks;
+			if(soundTicks <= 0) {
+				psoundTickfn();
+				soundTicks += SOUND_CLOCK_TICKS;
+			}
+
+			if(!stopState) {
+				if(timer0On) {
+					timer0Ticks -= clockTicks;
+					if(timer0Ticks <= 0) {
+						timer0Ticks += (0x10000 - timer0Reload) << timer0ClockReload;
+						timerOverflow |= 1;
+						soundTimerOverflow(0);
+						if(TM0CNT & 0x40) {
+							IF |= 0x08;
+							UPDATE_REG(0x202, IF);
+						}
+					}
+					TM0D = 0xFFFF - (timer0Ticks >> timer0ClockReload);
+					UPDATE_REG(0x100, TM0D);
+				}
+
+				if(timer1On) {
+					if(TM1CNT & 4) {
+						if(timerOverflow & 1) {
+							TM1D++;
+							if(TM1D == 0) {
+								TM1D += timer1Reload;
 								timerOverflow |= 2;
 								soundTimerOverflow(1);
 								if(TM1CNT & 0x40) {
@@ -3817,216 +3842,229 @@ updateLoop:
 									UPDATE_REG(0x202, IF);
 								}
 							}
-							TM1D = 0xFFFF - (timer1Ticks >> timer1ClockReload);
 							UPDATE_REG(0x104, TM1D);
 						}
-					}
-
-					if(timer2On) {
-						if(TM2CNT & 4) {
-							if(timerOverflow & 2) {
-								TM2D++;
-								if(TM2D == 0) {
-									TM2D += timer2Reload;
-									timerOverflow |= 4;
-									if(TM2CNT & 0x40) {
-										IF |= 0x20;
-										UPDATE_REG(0x202, IF);
-									}
-								}
-								UPDATE_REG(0x108, TM2D);
+					} else {
+						timer1Ticks -= clockTicks;
+						if(timer1Ticks <= 0) {
+							timer1Ticks += (0x10000 - timer1Reload) << timer1ClockReload;
+							timerOverflow |= 2;
+							soundTimerOverflow(1);
+							if(TM1CNT & 0x40) {
+								IF |= 0x10;
+								UPDATE_REG(0x202, IF);
 							}
-						} else {
-							timer2Ticks -= clockTicks;
-							if(timer2Ticks <= 0) {
-								timer2Ticks += (0x10000 - timer2Reload) << timer2ClockReload;
+						}
+						TM1D = 0xFFFF - (timer1Ticks >> timer1ClockReload);
+						UPDATE_REG(0x104, TM1D);
+					}
+				}
+
+				if(timer2On) {
+					if(TM2CNT & 4) {
+						if(timerOverflow & 2) {
+							TM2D++;
+							if(TM2D == 0) {
+								TM2D += timer2Reload;
 								timerOverflow |= 4;
 								if(TM2CNT & 0x40) {
 									IF |= 0x20;
 									UPDATE_REG(0x202, IF);
 								}
 							}
-							TM2D = 0xFFFF - (timer2Ticks >> timer2ClockReload);
 							UPDATE_REG(0x108, TM2D);
 						}
-					}
-
-					if(timer3On) {
-						if(TM3CNT & 4) {
-							if(timerOverflow & 4) {
-								TM3D++;
-								if(TM3D == 0) {
-									TM3D += timer3Reload;
-									if(TM3CNT & 0x40) {
-										IF |= 0x40;
-										UPDATE_REG(0x202, IF);
-									}
-								}
-								UPDATE_REG(0x10C, TM3D);
+					} else {
+						timer2Ticks -= clockTicks;
+						if(timer2Ticks <= 0) {
+							timer2Ticks += (0x10000 - timer2Reload) << timer2ClockReload;
+							timerOverflow |= 4;
+							if(TM2CNT & 0x40) {
+								IF |= 0x20;
+								UPDATE_REG(0x202, IF);
 							}
-						} else {
-							timer3Ticks -= clockTicks;
-							if(timer3Ticks <= 0) {
-								timer3Ticks += (0x10000 - timer3Reload) << timer3ClockReload;
+						}
+						TM2D = 0xFFFF - (timer2Ticks >> timer2ClockReload);
+						UPDATE_REG(0x108, TM2D);
+					}
+				}
+
+				if(timer3On) {
+					if(TM3CNT & 4) {
+						if(timerOverflow & 4) {
+							TM3D++;
+							if(TM3D == 0) {
+								TM3D += timer3Reload;
 								if(TM3CNT & 0x40) {
 									IF |= 0x40;
 									UPDATE_REG(0x202, IF);
 								}
 							}
-							TM3D = 0xFFFF - (timer3Ticks >> timer3ClockReload);
 							UPDATE_REG(0x10C, TM3D);
 						}
+					} else {
+						timer3Ticks -= clockTicks;
+						if(timer3Ticks <= 0) {
+							timer3Ticks += (0x10000 - timer3Reload) << timer3ClockReload;
+							if(TM3CNT & 0x40) {
+								IF |= 0x40;
+								UPDATE_REG(0x202, IF);
+							}
+						}
+						TM3D = 0xFFFF - (timer3Ticks >> timer3ClockReload);
+						UPDATE_REG(0x10C, TM3D);
 					}
 				}
+			}
 
-				timerOverflow = 0;
+			timerOverflow = 0;
 
 
 
 #ifdef PROFILING
-profilingTicks -= clockTicks;
-if(profilingTicks <= 0) {
-profilingTicks += profilingTicksReload;
-if(profilSegment) {
-	profile_segment *seg = profilSegment;
-	do {
-		u16 *b = (u16 *)seg->sbuf;
-		int pc = ((reg[15].I - seg->s_lowpc) * seg->s_scale)/0x10000;
-		if(pc >= 0 && pc < seg->ssiz) {
-			b[pc]++;
-			break;
-		}
+			profilingTicks -= clockTicks;
+			if(profilingTicks <= 0) {
+				profilingTicks += profilingTicksReload;
+				if(profilSegment) {
+					profile_segment *seg = profilSegment;
+					do {
+						u16 *b = (u16 *)seg->sbuf;
+						int pc = ((reg[15].I - seg->s_lowpc) * seg->s_scale)/0x10000;
+						if(pc >= 0 && pc < seg->ssiz) {
+							b[pc]++;
+							break;
+						}
 
-		seg = seg->next;
-	} while(seg);
-}
-}
-#endif
-
-ticks -= clockTicks;
-
-if (gba_joybus_enabled)
-JoyBusUpdate(clockTicks);
-
-if (gba_link_enabled)
-LinkUpdate(clockTicks);
-
-cpuNextEvent = CPUUpdateTicks();
-
-if(cpuDmaTicksToUpdate > 0) {
-if(cpuDmaTicksToUpdate > cpuNextEvent)
-	clockTicks = cpuNextEvent;
-else
-	clockTicks = cpuDmaTicksToUpdate;
-cpuDmaTicksToUpdate -= clockTicks;
-if(cpuDmaTicksToUpdate < 0)
-	cpuDmaTicksToUpdate = 0;
-cpuDmaHack = true;
-goto updateLoop;
-}
-
-// shuffle2: what's the purpose?
-	if(gba_link_enabled)
-		cpuNextEvent = 1;
-
-if(IF && (IME & 1) && armIrqEnable) {
-int res = IF & IE;
-if(stopState)
-	res &= 0x3080;
-if(res) {
-	if (intState)
-	{
-		if (!IRQTicks)
-		{
-			CPUInterrupt();
-			intState = false;
-			holdState = false;
-			stopState = false;
-			holdType = 0;
-		}
-	}
-	else
-	{
-		if (!holdState)
-		{
-			intState = true;
-			IRQTicks=7;
-			if (cpuNextEvent> IRQTicks)
-				cpuNextEvent = IRQTicks;
-		}
-		else
-		{
-			CPUInterrupt();
-			holdState = false;
-			stopState = false;
-			holdType = 0;
-		}
-	}
-
-	// Stops the SWI Ticks emulation if an IRQ is executed
-	//(to avoid problems with nested IRQ/SWI)
-	if (SWITicks)
-		SWITicks = 0;
-}
-}
-
-if(remainingTicks > 0) {
-if(remainingTicks > cpuNextEvent)
-	clockTicks = cpuNextEvent;
-else
-	clockTicks = remainingTicks;
-remainingTicks -= clockTicks;
-if(remainingTicks < 0)
-	remainingTicks = 0;
-goto updateLoop;
-}
-
-if (timerOnOffDelay)
-applyTimer();
-
-if(cpuNextEvent > ticks)
-cpuNextEvent = ticks;
-
-if(ticks <= 0 || cpuBreakLoop)
-break;
-
+						seg = seg->next;
+					} while(seg);
+				}
 			}
-		}
-	}
-
-
-
-	struct EmulatedSystem GBASystem = {
-			// emuMain
-			CPULoop,
-			// emuReset
-			CPUReset,
-			// emuCleanUp
-			CPUCleanUp,
-			// emuReadBattery
-			CPUReadBatteryFile,
-			// emuWriteBattery
-			CPUWriteBatteryFile,
-			// emuReadState
-			CPUReadState,
-			// emuWriteState
-			CPUWriteState,
-			// emuReadMemState
-			CPUReadMemState,
-			// emuWriteMemState
-			CPUWriteMemState,
-			// emuWritePNG
-			CPUWritePNGFile,
-			// emuWriteBMP
-			CPUWriteBMPFile,
-			// emuUpdateCPSR
-			CPUUpdateCPSR,
-			// emuHasDebugger
-			true,
-			// emuCount
-#ifdef FINAL_VERSION
-			250000
-#else
-			5000
 #endif
-	};
+
+			ticks -= clockTicks;
+
+			if (gba_joybus_enabled)
+				JoyBusUpdate(clockTicks);
+
+			if (gba_link_enabled)
+				LinkUpdate(clockTicks);
+
+			cpuNextEvent = CPUUpdateTicks();
+
+			if(cpuDmaTicksToUpdate > 0) {
+				if(cpuDmaTicksToUpdate > cpuNextEvent)
+					clockTicks = cpuNextEvent;
+				else
+					clockTicks = cpuDmaTicksToUpdate;
+				cpuDmaTicksToUpdate -= clockTicks;
+				if(cpuDmaTicksToUpdate < 0)
+					cpuDmaTicksToUpdate = 0;
+				cpuDmaHack = true;
+				goto updateLoop;
+			}
+
+			// shuffle2: what's the purpose?
+			if(gba_link_enabled)
+				cpuNextEvent = 1;
+
+			if(IF && (IME & 1) && armIrqEnable) {
+				int res = IF & IE;
+				if(stopState)
+					res &= 0x3080;
+				if(res) {
+					if (intState)
+					{
+						if (!IRQTicks)
+						{
+							CPUInterrupt();
+							intState = false;
+							holdState = false;
+							stopState = false;
+							holdType = 0;
+						}
+					}
+					else
+					{
+						if (!holdState)
+						{
+							intState = true;
+							IRQTicks=7;
+							if (cpuNextEvent> IRQTicks)
+								cpuNextEvent = IRQTicks;
+						}
+						else
+						{
+							CPUInterrupt();
+							holdState = false;
+							stopState = false;
+							holdType = 0;
+						}
+					}
+
+					// Stops the SWI Ticks emulation if an IRQ is executed
+					//(to avoid problems with nested IRQ/SWI)
+					if (SWITicks)
+						SWITicks = 0;
+				}
+			}
+
+			if(remainingTicks > 0) {
+				if(remainingTicks > cpuNextEvent)
+					clockTicks = cpuNextEvent;
+				else
+					clockTicks = remainingTicks;
+				remainingTicks -= clockTicks;
+				if(remainingTicks < 0)
+					remainingTicks = 0;
+				goto updateLoop;
+			}
+
+			if (timerOnOffDelay)
+				applyTimer();
+
+			if(cpuNextEvent > ticks)
+				cpuNextEvent = ticks;
+
+			if(ticks <= 0 || cpuBreakLoop)
+				break;
+
+		} // if (cpuTotalTicks >= cpuEventsTicks)
+	}
+}
+
+
+
+struct EmulatedSystem GBASystem = {
+		// emuMain
+		CPULoop,
+		// emuReset
+		CPUReset,
+		// emuCleanUp
+		CPUCleanUp,
+		// emuReadBattery
+		CPUReadBatteryFile,
+		// emuWriteBattery
+		CPUWriteBatteryFile,
+		// emuReadState
+		CPUReadState,
+		// emuWriteState
+		CPUWriteState,
+		// emuReadMemState
+		CPUReadMemState,
+		// emuWriteMemState
+		CPUWriteMemState,
+		// emuWritePNG
+		CPUWritePNGFile,
+		// emuWriteBMP
+		CPUWriteBMPFile,
+		// emuUpdateCPSR
+		CPUUpdateCPSR,
+		// emuHasDebugger
+		true,
+		// emuCount
+#ifdef FINAL_VERSION
+		250000
+#else
+		5000
+#endif
+};

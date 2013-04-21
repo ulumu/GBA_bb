@@ -4,6 +4,14 @@ misc\roms\gba        place unzipped .gba games in here (sdcard or phone)
                      place gba.bin file here if you wish to play games...
 misc\gbaemu          configuration, saves and other stuff.
 
+v1.0.5.2
+
+- Add Q10 support
+- Remap keyboard keys, both Q10 and Z10 based on same keyboard mapping
+- GBA arm instruction optimization using assembler
+- GBA gfx BKG line drawing optimization
+- Change frame skipping logic calculation
+
 v1.0.4.4
 
 - Bug fix SGB frame corruption

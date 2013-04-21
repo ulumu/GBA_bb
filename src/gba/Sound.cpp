@@ -539,13 +539,13 @@ bool soundInit()
 	soundDriver = systemSoundInit();
 	if ( !soundDriver )
 	{
-		fprintf(stderr,"soundInit: error soundDriver NULL\n");
+		SLOG("soundInit: error soundDriver NULL");
 		return false;
 	}
 
 	if (!soundDriver->init(soundSampleRate))
 	{
-	    fprintf(stderr,"soundInit: sample rate problem\n");
+	    SLOG("soundInit: sample rate problem");
 		return false;
 	}
 
