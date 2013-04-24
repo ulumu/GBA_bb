@@ -4,6 +4,11 @@ misc\roms\gba        place unzipped .gba games in here (sdcard or phone)
                      place gba.bin file here if you wish to play games...
 misc\gbaemu          configuration, saves and other stuff.
 
+v1.0.5.3
+
+- Bug fix optimization code
+- Add Dropdown menu support when swipe down from Top of screen
+
 v1.0.5.2
 
 - Add Q10 support

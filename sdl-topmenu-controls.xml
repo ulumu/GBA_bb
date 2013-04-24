@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<emulation version="1">
+
+<!-- Save state button: SDLK_F8 -->
+<key x="10" y="18" width="64" height="64" sym="289" scancode="289">
+<label x="0" y="0" width="64" height="64" image="savestate.png" />
+</key>
+
+<!-- Restore state button: SDLK_F9 -->
+<key x="110" y="18" width="64" height="64" sym="290" scancode="290">
+<label x="0" y="0" width="64" height="64" image="loadstate.png" />
+</key>
+
+<!-- Mute button: SDLK_PLUS -->
+<key x="210" y="18" width="64" height="64" sym="43" scancode="43">
+<label x="0" y="0" width="64" height="64" image="sndtoggle.png" />
+</key>
+
+<!-- Button Config button: SDLK_MINUS -->
+<key x="310" y="18" width="64" height="64" sym="45" scancode="45">
+<label x="0" y="0" width="64" height="64" image="keyconfig.png" />
+</key>
+
+<key x="410" y="18" width="64" height="64" sym="48" scancode="48">
+<label x="0" y="0" width="64" height="64" image="gba-icon.png"/>
+</key>
+
+</emulation>

@@ -149,6 +149,11 @@ extern u32 __asr_reg;
 extern u32 __ror_imm;
 extern u32 __ror_reg;
 extern u32 __imm;
+extern u32 __lsl_imm_nc;
+extern u32 __lsl_reg_nc;
+extern u32 __lsr_imm_nc;
+extern u32 __lsr_reg_nc;
+extern u32 __imm_nc;
 
 
 #endif // GBA_H

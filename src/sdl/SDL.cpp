@@ -1212,6 +1212,8 @@ void sdlReadPreferences(FILE *f)
 			inputSetKeymap(PAD_1, KEY_UP, sdlFromHex(value));
 		} else if(!strcmp(key, "Joy0_Down")) {
 			inputSetKeymap(PAD_1, KEY_DOWN, sdlFromHex(value));
+		} else if(!strcmp(key, "Joy0_Down2")) {
+			inputSetKeymap(PAD_1, KEY_DOWN2, sdlFromHex(value));
 		} else if(!strcmp(key, "Joy0_A")) {
 			inputSetKeymap(PAD_1, KEY_BUTTON_A, sdlFromHex(value));
 		} else if(!strcmp(key, "Joy0_B")) {
@@ -3309,7 +3311,13 @@ void systemFrame()
 		}
 		SLOG("Elasped:%dms, fps:%3.3f, drift:%3.2fms, skip every %d frame", curElaspedTime, curFps, (float)debugDriftTime/1000.0f, debugSkip);
 
-//		SLOG("%d %d %d %d %d %d %d %d %d", __lsl_imm, __lsl_reg, __lsr_imm, __lsr_reg, __asr_imm, __asr_reg, __ror_imm, __ror_reg, __imm);
+//		SLOG("%d %d | %d %d | %d %d | %d %d | %d %d %d %d | %d %d",
+//				__lsl_imm, __lsl_imm_nc,
+//				__lsl_reg, __lsl_reg_nc,
+//				__lsr_imm, __lsr_imm_nc,
+//				__lsr_reg, __lsr_reg_nc,
+//				__asr_imm, __asr_reg, __ror_imm, __ror_reg,
+//				__imm, __imm_nc);
 	}
 #endif
 #if 1

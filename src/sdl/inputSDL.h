@@ -34,7 +34,9 @@ enum EKey {
     KEY_BUTTON_SPEED,
     KEY_BUTTON_CAPTURE,
     KEY_BUTTON_AUTO_A,
-    KEY_BUTTON_AUTO_B
+    KEY_BUTTON_AUTO_B,
+    KEY_DOWN2,
+    KEY_TOTAL
 };
 
 enum EPad {

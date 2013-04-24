@@ -17,7 +17,7 @@
 
 #include "inputSDL.h"
 
-#define SDLBUTTONS_NUM 14
+#define SDLBUTTONS_NUM KEY_TOTAL
 
 static void sdlUpdateKey(uint32_t key, bool down);
 static void sdlUpdateJoyButton(int which, int button, bool pressed);
@@ -28,19 +28,19 @@ static bool sdlCheckJoyKey(int key);
 static bool sdlButtons[4][SDLBUTTONS_NUM] = {
   { false, false, false, false, false, false,
     false, false, false, false, false, false,
-    false, false
+    false, false, false
   },
   { false, false, false, false, false, false,
     false, false, false, false, false, false,
-    false, false
+    false, false, false
   },
   { false, false, false, false, false, false,
     false, false, false, false, false, false,
-    false, false
+    false, false, false
   },
   { false, false, false, false, false, false,
     false, false, false, false, false, false,
-    false, false
+    false, false, false
   }
 };
 
@@ -68,6 +68,7 @@ static uint32_t joypad[5][SDLBUTTONS_NUM] = {
     SDLK_a,     SDLK_s,
     SDLK_SPACE, SDLK_F12,
     SDLK_q,     SDLK_w,
+    SDLK_b
   }
 };
 
@@ -514,7 +515,7 @@ uint32_t inputReadJoypad(int which)
     res |= 32;
   if(sdlButtons[which][KEY_UP])
     res |= 64;
-  if(sdlButtons[which][KEY_DOWN])
+  if(sdlButtons[which][KEY_DOWN] || sdlButtons[which][KEY_DOWN2] )
     res |= 128;
   if(sdlButtons[which][KEY_BUTTON_R])
     res |= 256;

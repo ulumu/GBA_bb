@@ -37,6 +37,11 @@ u32 __asr_reg=0;
 u32 __ror_imm=0;
 u32 __ror_reg=0;
 u32 __imm=0;
+u32 __lsl_imm_nc=0;
+u32 __lsl_reg_nc=0;
+u32 __lsr_imm_nc=0;
+u32 __lsr_reg_nc=0;
+u32 __imm_nc=0;
 
 #ifdef PROFILING
 #include "prof/prof.h"
@@ -857,60 +862,27 @@ static void count(u32 opcode, int cond_res)
 #endif
 
 #ifndef ALU_INIT_C
-#ifdef __ARMASM__
- #define ALU_INIT_C \
-    int dest;                                           \
-    bool C_OUT = C_FLAG;                                \
-    u32 value;                                          \
-    __asm__ __volatile__ (                              \
-		"   ubfx %[dest], %[opcode], #12, #4\n\t"       \
-		: [dest] "=&r" (dest)                           \
-		: [opcode] "r" (opcode)                         \
-		: );
-
-#else
  #define ALU_INIT_C \
     int dest = (opcode>>12) & 15;                       \
     bool C_OUT = C_FLAG;                                \
     u32 value;
 #endif
-#endif
 // OP Rd,Rb,Rm LSL #
 #ifndef VALUE_LSL_IMM_C
-#ifdef __ARMASM__
- #define VALUE_LSL_IMM_C \
-    volatile unsigned int shift;                         \
-    ASMPROF(__lsl_imm);                                  \
-	__asm__ __volatile__ (                               \
-		"   ubfx  %[shift], %[opcode],  #7, #5\n\t"      \
-		"   and   r7, %[opcode], #0xF \n\t"              \
-		"   ldr   %[value], [%[reg], r7, LSL#2] \n\t"    \
-		"   cbz   %[shift], 01f  \n\t"                             \
-		"   rsb   r8, %[shift], #32 \n\t"                \
-		"   lsrs  r7, %[value], r8  \n\t"                \
-		"   lsl   %[value], %[value], %[shift] \n\t"     \
-		"   ite   eq\n\t"                                \
-		"   moveq %[C_OUT], #0 \n\t"                     \
-		"   movne %[C_OUT], #1 \n\t"                     \
-		"01:\n\t"                                        \
-		: [shift] "=&r" (shift), [value] "=&r" (value), [C_OUT] "=&r" (C_OUT)	\
-		: [opcode] "r" (opcode), [reg] "r" (reg)                             	\
-		: "r7", "r8" );
- #else
- #define VALUE_LSL_IMM_C \
-		unsigned int shift = (opcode >> 7) & 0x1F;          \
-		if (LIKELY(!shift)) {  /* LSL #0 most common? */    \
-			value = reg[opcode & 0x0F].I;                   \
-		} else {                                            \
-			u32 v = reg[opcode & 0x0F].I;                   \
-			C_OUT = (v >> (32 - shift)) & 1 ? true : false; \
-			value = v << shift;                             \
-		}
+ #define VALUE_LSL_IMM_C                                       \
+	{                                                          \
+	    ASMPROF(__lsl_imm);                                    \
+		register unsigned int shift = (opcode >> 7) & 0x1F;    \
+		value = reg[opcode & 0x0F].I;                          \
+		if (shift) {  /* LSL #0 most common? */                \
+			C_OUT = (value >> (32 - shift)) & 1 ? true : false;\
+			value = value << shift;                            \
+		}                                                      \
+	}
  #endif
-#endif
 // OP Rd,Rb,Rm LSL Rs
 #ifndef VALUE_LSL_REG_C
-#ifdef __ARMASM__
+#if 0//def __ARMASM__
  #define VALUE_LSL_REG_C \
     volatile unsigned int shift;                         \
     ASMPROF(__lsl_reg);                                  \
@@ -954,7 +926,7 @@ static void count(u32 opcode, int cond_res)
 
 // OP Rd,Rb,Rm LSR #
 #ifndef VALUE_LSR_IMM_C
-#ifdef __ARMASM__
+#if 0//def __ARMASM__
  #define VALUE_LSR_IMM_C \
     volatile unsigned int shift;                         \
     ASMPROF(__lsr_imm);                                  \
@@ -1015,7 +987,7 @@ static void count(u32 opcode, int cond_res)
 #endif
 // OP Rd,Rb,Rm ASR #
 #ifndef VALUE_ASR_IMM_C
-#ifdef __ARMASM__
+#if 0//def __ARMASM__
  #define VALUE_ASR_IMM_C \
 	volatile unsigned int shift;                         \
     ASMPROF(__asr_imm);                                  \
@@ -1087,7 +1059,7 @@ static void count(u32 opcode, int cond_res)
 #endif
 // OP Rd,Rb,Rm ROR #
 #ifndef VALUE_ROR_IMM_C
-#ifdef __ARMASM__
+#if 0//def __ARMASM__
  #define VALUE_ROR_IMM_C \
 	volatile unsigned int shift;                         \
     ASMPROF(__ror_imm);                                  \
@@ -1150,32 +1122,10 @@ static void count(u32 opcode, int cond_res)
 #endif
 // OP Rd,Rb,# ROR #
 #ifndef VALUE_IMM_C
-#ifdef __ARMASM__
  #define VALUE_IMM_C \
-	volatile unsigned int shift;                         \
-    ASMPROF(__imm);                                      \
-	__asm__ __volatile__ (                               \
-		"   and   %[shift], %[opcode],  #0xF00\n\t"      \
-		"   lsrs  %[shift], %[shift],   #7    \n\t"      \
-		"   and   %[value], %[opcode], #0xFF \n\t"       \
-		"   beq   01f  \n\t"                             \
-		"   sub   r8, %[shift], #1 \n\t"                 \
-		"   lsr   r7, %[value], r8  \n\t"                \
-		"   ands  r7, r7, #1\n\t"                        \
-		"   rsb   r8, %[shift], #32 \n\t"                \
-		"   lsl   r7, %[value], r8 \n\t"                 \
-		"   lsr   %[value], %[value], %[shift] \n\t"     \
-		"   orr   %[value], %[value], r7 \n\t"           \
-		"   ite   eq\n\t"                                \
-		"   moveq %[C_OUT], #0 \n\t"                     \
-		"   movne %[C_OUT], #1 \n\t"                     \
-		"01:\n\t"                                        \
-		: [shift] "=&r" (shift), [value] "=&r" (value), [C_OUT] "=&r" (C_OUT)	\
-		: [opcode] "r" (opcode), [reg] "r" (reg)                             	\
-		: "r7", "r8" );
-#else
- #define VALUE_IMM_C \
-    int shift = (opcode & 0xF00) >> 7;                  \
+ {                                                      \
+	ASMPROF(__imm);                                     \
+    register int shift = (opcode & 0xF00) >> 7;         \
     if (UNLIKELY(shift)) {                              \
         u32 v = opcode & 0xFF;                          \
         C_OUT = (v >> (shift - 1)) & 1 ? true : false;  \
@@ -1183,71 +1133,64 @@ static void count(u32 opcode, int cond_res)
                  (v >> shift));                         \
     } else {                                            \
         value = opcode & 0xFF;                          \
-    }
-#endif
+    }                                                   \
+ }
 #endif
 
 // Make the non-carry versions default to the carry versions
 // (this is fine for C--the compiler will optimize the dead code out)
 #ifndef ALU_INIT_NC
-#ifdef __ARMASM__
- #define ALU_INIT_NC \
-    int dest;                                           \
-    bool C_OUT = C_FLAG;                                \
-    register u32 value;                                 \
-    __asm__ __volatile__ (                              \
-		"   ubfx %[dest], %[opcode], #12, #4\n\t"       \
-		: [dest] "=&r" (dest)                           \
-		: [opcode] "r" (opcode)                         \
-		: );
-#else
  #define ALU_INIT_NC ALU_INIT_C
-#endif
 #endif
 #ifndef VALUE_LSL_IMM_NC
 #ifdef __ARMASM__
  #define VALUE_LSL_IMM_NC \
-    volatile unsigned int shift;                         \
-    ASMPROF(__lsl_imm);                                  \
+ {                                                       \
+    ASMPROF(__lsl_imm_nc);                               \
 	__asm__ __volatile__ (                               \
-		"   lsr   %[shift], %[opcode],  #7\n\t"          \
-		"   ands  %[shift], %[shift],   #0x1F\n\t"       \
+		"   lsr   r6, %[opcode],  #7\n\t"                \
+		"   ands  r6, r6,   #0x1F\n\t"                   \
 		"   and   r7, %[opcode], #0xF \n\t"              \
 		"   ldr   %[value], [%[reg], r7, LSL#2] \n\t"    \
 		"   it    ne\n\t"                                \
-		"   lslne %[value], %[value], %[shift] \n\t"     \
-		: [shift] "=&r" (shift), [value] "=&r" (value)   \
+		"   lslne %[value], %[value], r6 \n\t"           \
+		: [value] "=&r" (value)                          \
 		: [opcode] "r" (opcode), [reg] "r" (reg)         \
-		: "r7" );
+		: "r6", "r7" );                                  \
+ }
 #else
- #define VALUE_LSL_IMM_NC VALUE_LSL_IMM_C
+  #define VALUE_LSL_IMM_NC                                     \
+	{                                                          \
+		ASMPROF(__lsl_imm_nc);                                 \
+		register unsigned int shift = (opcode >> 7) & 0x1F;    \
+		value = reg[opcode & 0x0F].I;                          \
+		if (shift) {  /* LSL #0 most common? */                \
+			value = value << shift;                            \
+		}                                                      \
+	}
+
 #endif
 #endif
 #ifndef VALUE_LSL_REG_NC
-#ifdef __ARMASM__
- #define VALUE_LSL_REG_NC \
-    volatile unsigned int shift;                         \
-    ASMPROF(__lsl_reg);                                  \
-	__asm__ __volatile__ (                               \
-		"   lsr   r7, %[opcode],  #8\n\t"                \
-		"   ands  r7, r7,   #0xF\n\t"                    \
-		"   ldrb  %[shift], [%[reg], r7, LSL#2]\n\t"     \
-		"   and   r7, %[opcode], #0xF \n\t"              \
-		"   ldr   %[value], [%[reg], r7, LSL#2] \n\t"    \
-		"   it    ne\n\t"                                \
-		"   lslne %[value], %[value], %[shift] \n\t"     \
-		: [shift] "=&r" (shift), [value] "=&r" (value)   \
-		: [opcode] "r" (opcode), [reg] "r" (reg)         \
-		: "r7" );
-#else
- #define VALUE_LSL_REG_NC VALUE_LSL_REG_C
-#endif
+  #define VALUE_LSL_REG_NC \
+  {                                                              \
+	ASMPROF(__lsl_reg_nc);                                       \
+	register unsigned int shift = reg[(opcode >> 8)&15].B.B0;    \
+	value = reg[opcode & 0x0F].I;                                \
+	if (LIKELY(shift)) {                                         \
+		if (LIKELY(shift < 32)) {                                \
+			value = value << shift;                              \
+		} else {                                                 \
+			value = 0;                                           \
+		}                                                        \
+	}                                                            \
+  }
 #endif
 #ifndef VALUE_LSR_IMM_NC
 #ifdef __ARMASM__
  #define VALUE_LSR_IMM_NC \
     volatile unsigned int shift;                         \
-    ASMPROF(__lsr_imm);                                  \
+    ASMPROF(__lsr_imm_nc);                               \
 	__asm__ __volatile__ (                               \
 		"   lsr   %[shift], %[opcode],  #7\n\t"          \
 		"   ands  %[shift], %[shift],   #0x1F\n\t"       \
@@ -1260,13 +1203,22 @@ static void count(u32 opcode, int cond_res)
 		: [opcode] "r" (opcode), [reg] "r" (reg)         \
 		: "r7" );
 #else
- #define VALUE_LSR_IMM_NC VALUE_LSR_IMM_C
+  #define VALUE_LSR_IMM_NC \
+  {                                                              \
+	ASMPROF(__lsr_imm_nc);                                       \
+	register unsigned int shift = (opcode >> 7) & 0x1F;          \
+	if (LIKELY(shift)) {                                         \
+		value = reg[opcode & 0x0F].I >> shift;                   \
+	} else {                                                     \
+		value = 0;                                               \
+	}                                                            \
+  }
 #endif
 #endif
 #ifndef VALUE_LSR_REG_NC
  #define VALUE_LSR_REG_NC                           \
    unsigned int shift = reg[(opcode >> 8)&15].B.B0; \
-   ASMPROF(__lsr_reg);                              \
+   ASMPROF(__lsr_reg_nc);                           \
    if (LIKELY(shift)) {                             \
    	if (shift == 32) {                              \
    		value = 0;                                  \
@@ -1345,14 +1297,15 @@ static void count(u32 opcode, int cond_res)
 #endif
 #ifndef VALUE_IMM_NC
  #define VALUE_IMM_NC                                  \
-   int shift = (opcode & 0xF00) >> 7;                  \
-   if (UNLIKELY(shift)) {                              \
-       u32 v = opcode & 0xFF;                          \
-       value = ((v << (32 - shift)) |                  \
-                (v >> shift));                         \
-   } else {                                            \
-       value = opcode & 0xFF;                          \
-   }
+ {                                                     \
+	ASMPROF(__imm_nc);                                 \
+	register int shift = (opcode & 0xF00) >> 7;        \
+	value = opcode & 0xFF;                             \
+	if (UNLIKELY(shift)) {                             \
+		value = ((value << (32 - shift)) |             \
+				(value >> shift));                     \
+	}                                                  \
+ }
 
 #endif
 

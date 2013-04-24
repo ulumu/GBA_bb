@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="ISO-8859-1"?>
 <emulation version="1">
 
-<dpad x="2" y="180" width="104" height="104">
-<label x="0" y="0" width="104" height="104" image="gba_dpad.png"/>
+<dpad x="2" y="180" width="130" height="130">
+<label x="0" y="0" width="130" height="130" image="gba_dpad.png"/>
 </dpad>
 
-<key x="140" y="240" width="32" height="32" sym="13" scancode="13">
+<key x="150" y="240" width="32" height="32" sym="13" scancode="13">
 <label x="0" y="0" width="32" height="32" image="select.png" />
 </key>
 
-<key x="140" y="280" width="32" height="32" sym="32" scancode="32">
+<key x="150" y="280" width="32" height="32" sym="32" scancode="32">
 <label x="0" y="0" width="32" height="32" image="start-button.png" />
 </key>
 
@@ -28,18 +28,5 @@
 <key x="440" y="140" width="32" height="32" sym="112" scancode="112">
 <label x="0" y="0" width="32" height="32" image="gba_R.png" />
 </key>
-
-<key x="0" y="0" width="64" height="64" sym="48" scancode="48">
-<label x="0" y="0" width="32" height="32" image="gba-icon.png"/>
-</key>
-
-<!-- Mute button: SDLK_PLUS -->
-<key x="445" y="55" width="32" height="32" sym="43" scancode="43"/>
-
-<!-- Save state button: SDLK_F8 -->
-<key x="432" y="0" width="32" height="32" sym="289" scancode="289"/>
-
-<!-- Restore state button: SDLK_F9 -->
-<key x="220" y="0" width="32" height="32" sym="290" scancode="290"/>
 
 </emulation>
