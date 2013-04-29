@@ -557,7 +557,7 @@ void GetRomDirListing(vector<string> &vsList, const char *dpath )
 {
 #ifdef __PLAYBOOK__
 	DIR* dirp;
-	struct dirent* direntp;
+	struct dirent64* direntp;
 
 	if(!dpath)
 	{
@@ -571,11 +571,13 @@ void GetRomDirListing(vector<string> &vsList, const char *dpath )
 		SLOG("[---- Parsing %s ----]", dpath);
 		for(;;)
 		{
-			direntp = readdir( dirp );
+			direntp = readdir64( dirp );
 			if( direntp == NULL )
+			{
+				SLOG("End of readdir");
 				break;
+			}
 
-			// FCEUI_DispMessage(direntp->d_name,0);
 			string tmp = direntp->d_name;
 
 			if( strcmp( direntp->d_name, ".") == 0)
@@ -596,7 +598,13 @@ void GetRomDirListing(vector<string> &vsList, const char *dpath )
 				SLOG("ROM: %s", tmp.c_str());
 				vsList.push_back(tmp);
 			}
+			else
+			{
+				string tmp2 = tmp.substr(tmp.find_last_of("."));
+				SLOG("Not regonized filetype: %s", tmp2.c_str() );
+			}
 		}
+		closedir(dirp);
 	}
 	else
 	{
