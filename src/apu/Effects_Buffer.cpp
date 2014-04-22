@@ -465,7 +465,7 @@ long Effects_Buffer::read_samples( blip_sample_t* out, long out_size )
 				if ( new_echo_pos >= echo_size )
 					new_echo_pos -= echo_size;
 				echo_pos = new_echo_pos;
-				assert( echo_pos < echo_size );
+				ASSERT( echo_pos < echo_size );
 
 				out += count * stereo;
 				mixer.samples_read += count;
@@ -563,7 +563,7 @@ void Effects_Buffer::mix_effects( blip_sample_t* out_, int pair_count )
 				blargg_long out_offset = echo_pos + i + s.delay [i];
 				if ( out_offset >= echo_size )
 					out_offset -= echo_size;
-				assert( out_offset < echo_size );
+				ASSERT( out_offset < echo_size );
 				fixed_t* BLIP_RESTRICT out_pos = &echo [out_offset];
 
 				// break into up to three chunks to avoid having to handle wrap-around

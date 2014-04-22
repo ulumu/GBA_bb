@@ -36,15 +36,33 @@ extern int timer3Ticks;
 extern int timer3ClockReload;
 extern int cpuTotalTicks;
 
-#define CPUReadByteQuick(addr) \
-  map[(addr)>>24].address[(addr) & map[(addr)>>24].mask]
-
-#define CPUReadHalfWordQuick(addr) \
-  READ16LE(((u16*)&map[(addr)>>24].address[(addr) & map[(addr)>>24].mask]))
-
-#define CPUReadMemoryQuick(addr) \
-  READ32LE(((u32*)&map[(addr)>>24].address[(addr) & map[(addr)>>24].mask]))
+#define CPUReadByteQuick(addr)		map[(addr)>>24].address[(addr) & map[(addr)>>24].mask]
+#define CPUReadHalfWordQuick(addr)	READ16LE(((u16*)&map[(addr)>>24].address[(addr) & map[(addr)>>24].mask]))
+#define CPUReadMemoryQuick(addr)	READ32LE(((u32*)&map[(addr)>>24].address[(addr) & map[(addr)>>24].mask]))
 
 extern u32 myROM[];
+
+#if defined(__GNUC__)
+# if 0 //defined(__ARM__)
+#  define PREFETCH_FIRST(_addr)  \
+    __asm__ __volatile__ (              \
+        "   pld [%0]        \n\t"       \
+        "   pld [%0, #32]   \n\t"       \
+        "   pld [%0, #64]   \n\t"       \
+        "   pld [%0, #96]   \n\t"       \
+        :                               \
+        : "r" (_addr));
+#  define PREFETCH_NEXT(_addr)   \
+    __asm__ __volatile__ (              \
+        "   pld [%0, #128]  \n\t"       \
+        :                               \
+        : "r" (_addr));
+# else
+#  define PREFETCH_FIRST(_addr)
+#  define PREFETCH_NEXT(_addr)
+# endif
+#endif
+
+//# include <arm_neon.h>
 
 #endif // GBAINLINE_H

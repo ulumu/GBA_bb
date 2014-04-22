@@ -20,12 +20,10 @@ static const unsigned char influence[3 * 3] = { 16,  4,  4, // red
 												 8, 16,  8, // green
 												 0,  8, 16};// blue
 
-inline void swap(short & a, short & b)
-{
-	short temp = a;
-	a = b;
-	b = temp;
-}
+#define swap(a, b) {\
+(a) ^= (b); \
+(b) ^= (a); \
+(a) ^= (b); }
 
 void gbafilter_pal(u16 * buf, int count)
 {

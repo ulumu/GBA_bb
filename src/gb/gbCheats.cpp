@@ -234,11 +234,15 @@ bool gbAddGsCheat(const char *code, const char *desc)
 
   if ((gsCode !=1) && ((gsCode & 0xF0) !=0x80) && ((gsCode & 0xF0) !=0x90) &&
       ((gsCode & 0xF0) !=0xA0) && ((gsCode) !=0xF0) && ((gsCode) !=0xF1))
+  {
     systemMessage(MSG_WRONG_GAMESHARK_CODE,
                   N_("Wrong GameShark code type : %s"), code);
+  }
   else if (((gsCode & 0xF0) ==0xA0) || ((gsCode) ==0xF0) || ((gsCode) ==0xF1))
+  {
     systemMessage(MSG_UNSUPPORTED_GAMESHARK_CODE,
                   N_("Unsupported GameShark code type : %s"), code);
+  }
 
   gbCheatNumber++;
 

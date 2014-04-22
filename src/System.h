@@ -1,31 +1,41 @@
 #ifndef SYSTEM_H
 #define SYSTEM_H
 
+#include <string.h>
 #include "common/Types.h"
 
 #include <zlib.h>
 
-#ifdef __QNXNTO__
 #include <stdio.h>
+extern int   g_logtofile;
+extern FILE *g_flogfile;
+
+#if __DEUBG__
+
 #include <sys/slog.h>
 #include <sys/slogcodes.h>
 #include "bbDialog.h"
 
-extern int   g_logtofile;
-extern FILE *g_flogfile;
 
 #undef SLOG
 #define SLOG(fmt, ...) \
 	if (g_logtofile)    \
 	{    fprintf(g_flogfile, "[GBA-LOG][%s:%d]:"fmt"\n", __FUNCTION__, __LINE__, ##__VA_ARGS__); fflush(g_flogfile); } \
     else               \
-        slogf(_SLOG_SETCODE(_SLOGC_TEST+328, 0), _SLOG_DEBUG1, "[GBA-LOG][%s:%d]:"fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__)
+        /*slogf(_SLOG_SETCODE(_SLOGC_TEST+328, 0), _SLOG_DEBUG1, "[GBA-LOG][%s:%d]:"fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__)*/ \
+	    fprintf(stdout, "[GBA-LOG][%s:%d]:"fmt"\n", __FUNCTION__, __LINE__, ##__VA_ARGS__); fflush(stdout)
 #else
-#define SLOG(fmt, ...)  \
+#define SLOG(fmt, ...)      \
 		if (g_logtofile)    \
-		{    fprintf(g_flogfile, "[GBA-LOG][%s:%d]:"fmt"\n", __FUNCTION__, __LINE__, ##__VA_ARGS__); fflush(g_flogfile); } \
-	    else               \
-             fprintf(stderr, "[GBA-LOG][%s:%d]:"fmt"\n", __FUNCTION__, __LINE__, ##__VA_ARGS__)
+		{                   \
+			fprintf(g_flogfile, "[GBA-LOG][%s:%d]:"fmt"\n", __FUNCTION__, __LINE__, ##__VA_ARGS__); fflush(g_flogfile); \
+		}
+
+#define ASSERT( exp )       \
+		if ( !(exp) )       \
+		{                   \
+			SLOG("[ASSERTION] (%s)", #exp); \
+		}
 #endif
 
 #define systemMessage(num, fmt, ...) SLOG(#num"|"fmt, ##__VA_ARGS__)
@@ -113,10 +123,17 @@ extern int systemColorDepth;
 extern int systemDebug;
 extern int systemVerbose;
 extern int systemFrameSkip;
+extern int systemRenderFps;
 extern int systemSaveUpdateCounter;
 extern int systemSpeed;
 
 #define SYSTEM_SAVE_UPDATED 30
 #define SYSTEM_SAVE_NOT_UPDATED 0
+#define INLINE inline
+#define LSB_FIRST
+
+#ifdef  STL100_1
+#define GBA_USE_RGBA8888 // comment out to use 16bit GFX
+#endif
 
 #endif // SYSTEM_H

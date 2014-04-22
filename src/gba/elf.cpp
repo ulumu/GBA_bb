@@ -628,7 +628,7 @@ void elfPrintCallChain(u32 address)
   reg_pair regs[15];
   reg_pair newRegs[15];
 
-  memcpy(&regs[0], &reg[0], sizeof(reg_pair) * 15);
+  memcpy(&regs[0], &bus.reg[0], sizeof(reg_pair) * 15);
 
   while(count < 20) {
     const char *addr = elfGetAddressSymbol(address);
@@ -717,7 +717,7 @@ u32 elfDecodeLocation(Function *f, ELFBlock *o, LocationType *type, u32 base)
     case DW_OP_reg13:
     case DW_OP_reg14:
     case DW_OP_reg15:
-      framebase = reg[*b->data-0x50].I;
+      framebase = bus.reg[*b->data-0x50].I;
       break;
     default:
       fprintf(stderr, "Unknown frameBase %02x\n", *b->data);

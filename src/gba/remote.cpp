@@ -311,7 +311,7 @@ void remoteSendStatus()
   char *s = buffer;
   s += 3;
   for(int i = 0; i < 15; i++) {
-    u32 v = reg[i].I;
+    u32 v = bus.reg[i].I;
     sprintf(s, "%02x:%02x%02x%02x%02x;",i,
             (v & 255),
             (v >> 8) & 255,
@@ -319,14 +319,14 @@ void remoteSendStatus()
             (v >> 24) & 255);
     s += 12;
   }
-  u32 v = armNextPC;
+  u32 v = bus.armNextPC;
   sprintf(s, "0f:%02x%02x%02x%02x;", (v & 255),
           (v >> 8) & 255,
           (v >> 16) & 255,
           (v >> 24) & 255);
   s += 12;
   CPUUpdateCPSR();
-  v = reg[16].I;
+  v = bus.reg[16].I;
   sprintf(s, "19:%02x%02x%02x%02x;", (v & 255),
           (v >> 8) & 255,
           (v >> 16) & 255,
@@ -425,7 +425,7 @@ void remoteStepOverRange(char *p)
     CPULoop(1);
     if(debugger)
       break;
-  } while(armNextPC >= address && armNextPC < final);
+  } while(bus.armNextPC >= address && bus.armNextPC < final);
 
   remoteResumed = false;
 
@@ -481,13 +481,13 @@ void remoteReadRegisters(char *p)
   int i;
   // regular registers
   for(i = 0; i < 15; i++) {
-    u32 v = reg[i].I;
+    u32 v = bus.reg[i].I;
     sprintf(s, "%02x%02x%02x%02x",  v & 255, (v >> 8) & 255,
             (v >> 16) & 255, (v >> 24) & 255);
     s += 8;
   }
   // PC
-  u32 pc = armNextPC;
+  u32 pc = bus.armNextPC;
   sprintf(s, "%02x%02x%02x%02x", pc & 255, (pc >> 8) & 255,
           (pc >> 16) & 255, (pc >> 24) & 255);
   s += 8;
@@ -503,7 +503,7 @@ void remoteReadRegisters(char *p)
   s += 8;
   // CPSR
   CPUUpdateCPSR();
-  u32 v = reg[16].I;
+  u32 v = bus.reg[16].I;
   sprintf(s, "%02x%02x%02x%02x",  v & 255, (v >> 8) & 255,
           (v >> 16) & 255, (v >> 24) & 255);
   s += 8;
@@ -546,13 +546,13 @@ void remoteWriteRegister(char *p)
   v = data[0] | (data[1] << 8) | (data[2] << 16) | (data[3] << 24);
 
   //  printf("Write register %d=%08x\n", r, v);
-  reg[r].I = v;
+  bus.reg[r].I = v;
   if(r == 15) {
-    armNextPC = v;
+    bus.armNextPC = v;
     if(armState)
-      reg[15].I = v + 4;
+      bus.reg[15].I = v + 4;
     else
-      reg[15].I = v + 2;
+      bus.reg[15].I = v + 2;
   }
   remotePutPacket("OK");
 }

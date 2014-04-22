@@ -114,8 +114,7 @@ void gbSgbFillScreen(u16 color)
   case 16:
     {
       for(int y = 0; y < 144; y++) {
-        int yLine = (y+gbBorderRowSkip+1)*(gbBorderLineSkip+2) +
-          gbBorderColumnSkip;
+        int yLine = (y+gbBorderRowSkip)*(gbBorderLineSkip) + gbBorderColumnSkip;
         u16 *dest = (u16*)pix + yLine;
         for(register int x = 0; x < 160; x++)
           gbSgbDraw16Bit(dest++, color);
@@ -137,7 +136,7 @@ void gbSgbFillScreen(u16 color)
   case 32:
     {
       for(int y = 0; y < 144; y++) {
-        int yLine = (y+gbBorderRowSkip+1)*(gbBorderLineSkip+1) + gbBorderColumnSkip;
+        int yLine = (y+gbBorderRowSkip)*(gbBorderLineSkip) + gbBorderColumnSkip;
         u32 *dest = (u32 *)pix + yLine;
         for(register int x = 0; x < 160; x++) {
           gbSgbDraw32Bit(dest++, color);
@@ -188,9 +187,9 @@ void gbSgbRenderScreenToBuffer()
 void gbSgbDrawBorderTile(int x, int y, int tile, int attr)
 
 {
-  u16 *dest   = (u16*)pix + ((y+1) * (gbWidth+2)) + x;
+  u16 *dest   = (u16*)pix + ((y) * (gbWidth)) + x;
   u8  *dest8  = (u8*)pix + ((y*gbWidth)+x)*3;
-  u32 *dest32 = (u32*)pix + ((y+1)*(gbWidth+1)) + x;
+  u32 *dest32 = (u32*)pix + ((y)*(gbWidth)) + x;
 
   u8 *tileAddress = &gbSgbBorderChar[tile * 32];
   u8 *tileAddress2 = &gbSgbBorderChar[tile * 32 + 16];
@@ -258,13 +257,13 @@ void gbSgbDrawBorderTile(int x, int y, int tile, int attr)
 
         switch(systemColorDepth) {
         case 16:
-          gbSgbDraw16Bit(dest + yyy*(gbWidth+2) + xxx, cc);
+          gbSgbDraw16Bit(dest + yyy*(gbWidth) + xxx, cc);
           break;
         case 24:
           gbSgbDraw24Bit(dest8 + (yyy*gbWidth+xxx)*3, cc);
           break;
         case 32:
-          gbSgbDraw32Bit(dest32 + yyy*(gbWidth+1)+xxx, cc);
+          gbSgbDraw32Bit(dest32 + yyy*(gbWidth)+xxx, cc);
           break;
         }
       }

@@ -26,11 +26,22 @@
 extern int   g_logtofile;
 extern FILE *g_flogfile;
 
+#if __DEBUG__
+#include <sys/slog.h>
+#include <sys/slogcodes.h>
+
+#define SLOG(fmt, ...) \
+	if (g_logtofile)    \
+	{    fprintf(g_flogfile, "[GBA-LOG][%s:%d]:"fmt"\n", __FUNCTION__, __LINE__, ##__VA_ARGS__); fflush(g_flogfile); } \
+    else               \
+        /*slogf(_SLOG_SETCODE(_SLOGC_TEST+328, 0), _SLOG_DEBUG1, "[GBA-LOG][%s:%d]:"fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__)*/ \
+        printf("[GBA-LOG][%s:%d]:"fmt"\n", __FUNCTION__, __LINE__, ##__VA_ARGS__); fflush(stdout)
+#else
 #define SLOG(fmt, ...)  \
 		if (g_logtofile)    \
-		{    fprintf(g_flogfile, "[GBA-LOG][%s:%d]:"fmt"\n", __FUNCTION__, __LINE__, ##__VA_ARGS__); fflush(g_flogfile); } \
-	    else               \
-             fprintf(stderr, "[GBA-LOG][%s:%d]:"fmt"\n", __FUNCTION__, __LINE__, ##__VA_ARGS__)
+		{    fprintf(g_flogfile, "[GBA-LOG][%s:%d]:"fmt"\n", __FUNCTION__, __LINE__, ##__VA_ARGS__); fflush(g_flogfile);  \
+		}
+#endif
 
 class SoundSDL: public SoundDriver
 {

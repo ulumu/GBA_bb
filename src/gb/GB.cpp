@@ -3658,11 +3658,15 @@ static bool gbReadSaveState(gzFile gzFile)
 
     if((ub != useBios) && (ib)) {
       if(useBios)
+      {
         systemMessage(MSG_SAVE_GAME_NOT_USING_BIOS,
                       N_("Save game is not using the BIOS files"));
+      }
       else
+      {
         systemMessage(MSG_SAVE_GAME_USING_BIOS,
                       N_("Save game is using the BIOS file"));
+      }
       return false;
     }
   }
@@ -4392,7 +4396,7 @@ void gbDrawLine()
     case 16:
     {
       u16 * dest = (u16 *)pix +
-                   (gbBorderLineSkip+2) * (register_LY + gbBorderRowSkip+1)
+                   (gbBorderLineSkip) * (register_LY + gbBorderRowSkip)
                    + gbBorderColumnSkip;
       for(int x = 0; x < 160; ) {
         *dest++ = systemColorMap16[gbLineMix[x++]];
@@ -4469,7 +4473,7 @@ void gbDrawLine()
     case 32:
     {
       u32 * dest = (u32 *)pix +
-                   (gbBorderLineSkip+1) * (register_LY + gbBorderRowSkip+1)
+                   (gbBorderLineSkip) * (register_LY + gbBorderRowSkip)
                    + gbBorderColumnSkip;
       for(int x = 0; x < 160;) {
         *dest++ = systemColorMap32[gbLineMix[x++]];

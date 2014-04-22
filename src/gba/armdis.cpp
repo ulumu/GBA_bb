@@ -213,6 +213,8 @@ char* addHex(char *dest, int siz, u32 val){
 }
 
 int disArm(u32 offset, char *dest, int flags){
+	offset &= 0x0FFFFFFF;
+
   u32 opcode = debuggerReadMemory(offset);
 
   const Opcodes *sp = armOpcodes;
@@ -528,6 +530,8 @@ int disArm(u32 offset, char *dest, int flags){
 }
 
 int disThumb(u32 offset, char *dest, int flags){
+	offset &= 0x0FFFFFFF;
+
   u32 opcode = debuggerReadHalfWord(offset);
 
   const Opcodes *sp = thumbOpcodes;

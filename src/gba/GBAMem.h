@@ -7,7 +7,84 @@
 #ifndef GBAMEM_H_
 #define GBAMEM_H_
 
+#ifndef __X86__
+#define VIRTUAL_MEM
+#endif
+
 #ifndef __GBAINLINE__
+
+//#define __MEMPROFILE__
+#define __OPTIMIZE_MEM__
+
+#ifdef __OPTIMIZE_MEM__
+// Read Memory
+typedef u32(*readMemFunc_t)(const u32 address);
+typedef u8 (*readMem8Func_t)(const u32 address);
+
+extern readMemFunc_t rdMem32[16 * 16];
+extern readMemFunc_t rdMem16[16 * 16];
+extern readMem8Func_t rdMem8[16 * 16];
+
+#define CPUReadMem32Setup(address)     readMemFunc_t  __rdMemFunc = rdMem32[((address) >> 24)]
+#define CPUReadMem16Setup(address)     readMemFunc_t  __rdMemFunc = rdMem16[((address) >> 24)]
+#define CPUReadMem8Setup(address)      readMem8Func_t __rdMemFunc = rdMem8[((address) >> 24)]
+#define CPUReadMemFast(address)        __rdMemFunc(address)
+
+#define CPUReadMemory(address)         rdMem32[((address) >> 24)](address)
+#define CPUReadHalfWord(address)       rdMem16[((address) >> 24)](address)
+#define CPUReadByte(address)            rdMem8[((address) >> 24)](address)
+
+#ifdef __X86__
+#define CPUReadMem32Direct(address)    CPUReadMemory(address)
+#define CPUReadMem16Direct(address)    CPUReadHalfWord(address)
+#define CPUReadMem8Direct(address)     CPUReadByte(address)
+#else
+#define CPUReadMem32Direct(address)    *(u32 *)(address)
+#define CPUReadMem16Direct(address)    *(u16 *)(address)
+#define CPUReadMem8Direct(address)     *(u8  *)(address)
+#endif
+
+inline u16 CPUReadHalfWordSigned(u32 address)
+{
+	u16 value = CPUReadHalfWord(address);
+	if((address & 1))
+		value = (s8)value;
+	return value;
+}
+
+// Write Memory
+typedef void (*writeMem32Func_t)(const u32 address, const u32 value);
+typedef void (*writeMem16Func_t)(const u32 address, const u16 value);
+typedef void (*writeMem8Func_t)(const u32 address, const u8 value);
+
+extern writeMem32Func_t wrMem32[16 * 16];
+extern writeMem16Func_t wrMem16[16 * 16];
+extern writeMem8Func_t  wrMem8[16 * 16];
+
+#define CPUWriteMem32Setup(address)     writeMem32Func_t __wrMemFunc = wrMem32[((address) >> 24)]
+#define CPUWriteMem16Setup(address)     writeMem16Func_t __wrMemFunc = wrMem16[((address) >> 24)]
+#define CPUWriteMem8Setup(address)      writeMem8Func_t  __wrMemFunc = wrMem8[((address) >> 24)]
+#define CPUWriteMemFast(address, value) __wrMemFunc(address, value)
+
+#define CPUWriteMemory(address, value)   wrMem32[(address) >> 24](address, value)
+#define CPUWriteHalfWord(address, value) wrMem16[((address) >> 24)](address, value)
+#define CPUWriteByte(address, value)      wrMem8[((address) >> 24)](address, value)
+
+#ifdef __X86__
+#define CPUWriteMem32Direct(address, value)  CPUWriteMemory(address, value)
+#define CPUWriteMem16Direct(address, value)  CPUWriteHalfWord(address, value)
+#define CPUWriteMem8Direct(address, value)   CPUWriteByte(address, value)
+#else
+#define CPUWriteMem32Direct(address, value)  *(u32 *)(address) = value
+#define CPUWriteMem16Direct(address, value)  *(u16 *)(address) = value
+#define CPUWriteMem8Direct(address, value)   *(u8  *)(address) = value
+#endif
+
+#ifdef __MEMPROFILE__
+extern u32 memProfileCount[16 * 8];
+#endif
+
+#else
 u32 CPUReadMemory(u32 address);
 u32 CPUReadHalfWord(u32 address);
 u16 CPUReadHalfWordSigned(u32 address);
@@ -16,6 +93,9 @@ u8  CPUReadByte(u32 address);
 void CPUWriteMemory(u32 address, u32 value);
 void CPUWriteHalfWord(u32 address, u16 value);
 void CPUWriteByte(u32 address, u8 b);
+#endif
+
+
 
 #else
 

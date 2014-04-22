@@ -29,5 +29,11 @@
 #define SYSCONFDIR     "/accounts/1000/shared/misc/gbaemu"
 #define SYSROMDIR      "/accounts/1000/shared/misc/roms/gba/"
 #define SDCARDROMDIR   "/accounts/1000/removable/sdcard/misc/roms/gba/"
-#define VERSION        "1.8.0"
+
+#ifdef STL100_1
+#define GBA_VERSION        "1.2.1.3"
+#else
+#define GBA_VERSION        "1.2.0.3"
+#endif
+
 #endif //__AUTOBUILD_H__

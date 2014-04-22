@@ -84,6 +84,32 @@ static void apply_volume()
 		gb_apu->volume( soundVolume_ );
 }
 
+static u16 soundWaveOut[1600];
+static void flush_samples(Multi_Buffer * buffer)
+{
+	// We want to write the data frame by frame to support legacy audio drivers
+	// that don't use the length parameter of the write method.
+	// TODO: Update the Win32 audio drivers (DS, OAL, XA2), and flush all the
+	// samples at once to help reducing the audio delay on all platforms.
+	int soundBufferLen = ( soundSampleRate / 60 ) * 4;
+
+	// soundBufferLen should have a whole number of sample pairs
+	//assert( soundBufferLen % (2 * sizeof *soundFinalWave) == 0 );
+
+	// number of samples in output buffer
+	int const out_buf_size = soundBufferLen / sizeof(*soundWaveOut);
+
+	// Keep filling and writing soundFinalWave until it can't be fully filled
+	while ( buffer->samples_avail() >= out_buf_size )
+	{
+		buffer->read_samples( (blip_sample_t*) soundWaveOut, out_buf_size );
+		if(soundPaused)
+			soundResume();
+
+		systemOnWriteDataToSoundBuffer(soundWaveOut, soundBufferLen);
+	}
+}
+
 void gbSoundTick()
 {
  	if ( gb_apu && stereo_buffer )

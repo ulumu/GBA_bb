@@ -21,8 +21,29 @@
 <label x="0" y="0" width="64" height="64" image="keyconfig.png" />
 </key>
 
+<!-- Rom loading button: SDLK_0 -->
 <key x="410" y="18" width="64" height="64" sym="48" scancode="48">
 <label x="0" y="0" width="64" height="64" image="gba-icon.png"/>
+</key>
+
+<!-- Cheat button: SDLK_F1 -->
+<key x="60" y="78" width="64" height="64" sym="282" scancode="282">
+<label x="0" y="0" width="64" height="64" image="cheat.png" />
+</key>
+
+<!-- Fast Fwd button: SDLK_F2 -->
+<key x="160" y="78" width="64" height="64" sym="283" scancode="283">
+<label x="0" y="0" width="64" height="64" image="ffwd.png" />
+</key>
+
+<!-- FPS button: SDLK_F3 -->
+<key x="260" y="78" width="64" height="64" sym="284" scancode="284">
+<label x="0" y="0" width="64" height="64" image="fps.png" />
+</key>
+
+<!-- Resize button: SDLK_F4 -->
+<key x="360" y="78" width="64" height="64" sym="285" scancode="285">
+<label x="0" y="0" width="64" height="64" image="resize.png" />
 </key>
 
 </emulation>

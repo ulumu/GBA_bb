@@ -1,3 +1,6 @@
+#if 0
+
+
 #include <string.h>
 
 #include "Sound.h"
@@ -95,8 +98,8 @@ private:
 };
 
 static Gba_Pcm_Fifo     pcm [2];
-static Gb_Apu*          gb_apu;
-static Stereo_Buffer*   stereo_buffer;
+static Gb_Apu*          gb_apu = NULL;
+static Stereo_Buffer*   stereo_buffer = NULL;
 
 static Blip_Synth<blip_best_quality,1> pcm_synth [3]; // 32 kHz, 16 kHz, 8 kHz
 
@@ -197,8 +200,8 @@ void Gba_Pcm_Fifo::timer_overflowed( int which_timer )
 				int reg = which ? FIFOB_L : FIFOA_L;
 				for ( int n = 4; n--; )
 				{
-					soundEvent(reg  , (u16)0);
-					soundEvent(reg+2, (u16)0);
+					soundEvent_u16(reg  , (u16)0);
+					soundEvent_u16(reg+2, (u16)0);
 				}
 			}
 		}
@@ -244,7 +247,7 @@ static void apply_control()
 	pcm [1].pcm.apply_control( 1 );
 }
 
-static int gba_to_gb_sound( int addr )
+static inline int gba_to_gb_sound( int addr )
 {
 	static const int table [0x40] =
 	{
@@ -262,7 +265,7 @@ static int gba_to_gb_sound( int addr )
 	return 0;
 }
 
-void soundEvent(u32 address, u8 data)
+void soundEvent_u8(u32 address, u8 data)
 {
 	int gb_addr = gba_to_gb_sound( address );
 	if ( gb_addr )
@@ -303,7 +306,7 @@ static void write_SGCNT0_H( int data )
 	apply_volume( true );
 }
 
-void soundEvent(u32 address, u16 data)
+void soundEvent_u16(u32 address, u16 data)
 {
 	switch ( address )
 	{
@@ -313,13 +316,19 @@ void soundEvent(u32 address, u16 data)
 
 	case FIFOA_L:
 	case FIFOA_H:
-		pcm [0].write_fifo( data );
+		pcm[0].fifo [pcm[0].writeIndex  ] = data & 0xFF;
+		pcm[0].fifo [pcm[0].writeIndex+1] = data >> 8;
+		pcm[0].count += 2;
+		pcm[0].writeIndex = (pcm[0].writeIndex + 2) & 31;
 		WRITE16LE( &ioMem[address], data );
 		break;
 
 	case FIFOB_L:
 	case FIFOB_H:
-		pcm [1].write_fifo( data );
+		pcm[1].fifo [pcm[1].writeIndex  ] = data & 0xFF;
+		pcm[1].fifo [pcm[1].writeIndex+1] = data >> 8;
+		pcm[1].count += 2;
+		pcm[1].writeIndex = (pcm[1].writeIndex + 2) & 31;
 		WRITE16LE( &ioMem[address], data );
 		break;
 
@@ -329,8 +338,8 @@ void soundEvent(u32 address, u16 data)
 		break;
 
 	default:
-		soundEvent( address & ~1, (u8) (data     ) ); // even
-		soundEvent( address |  1, (u8) (data >> 8) ); // odd
+		soundEvent_u8( address & ~1, (u8) (data     ) ); // even
+		soundEvent_u8( address |  1, (u8) (data >> 8) ); // odd
 		break;
 	}
 }
@@ -433,7 +442,10 @@ static void apply_muting()
 
 static void reset_apu()
 {
-	gb_apu->reset( gb_apu->mode_agb, true );
+	if (gb_apu)
+	{
+		gb_apu->reset( gb_apu->mode_agb, true );
+	}
 
 	if ( stereo_buffer )
 		stereo_buffer->clear();
@@ -443,6 +455,8 @@ static void reset_apu()
 
 static void remake_stereo_buffer()
 {
+	SLOG("[ENTER] ST-BUF=%X, GB-APU=%X", (int)stereo_buffer, (int)gb_apu);
+
 	if ( !ioMem )
 		return;
 
@@ -451,11 +465,30 @@ static void remake_stereo_buffer()
 	pcm [1].pcm.init();
 
 	// Stereo_Buffer
-	delete stereo_buffer;
+	if (stereo_buffer) delete stereo_buffer;
 	stereo_buffer = 0;
 
 	stereo_buffer = new Stereo_Buffer; // TODO: handle out of memory
+	if (NULL == stereo_buffer)
+	{
+		SLOG("Failed creating stereo_buffer, possible out of memory!!");
+		return;
+	}
+
 	stereo_buffer->set_sample_rate( soundSampleRate ); // TODO: handle out of memory
+
+	// APU
+	if ( !gb_apu )
+	{
+		gb_apu = new Gb_Apu; // TODO: handle out of memory
+		if ( NULL == gb_apu )
+		{
+			SLOG("Failed creating gb_apu, possible out of memory!!");
+			return;
+		}
+		reset_apu();
+	}
+
 	stereo_buffer->clock_rate( gb_apu->clock_rate );
 
 	// PCM
@@ -463,15 +496,10 @@ static void remake_stereo_buffer()
 	pcm [1].which = 1;
 	apply_filtering();
 
-	// APU
-	if ( !gb_apu )
-	{
-		gb_apu = new Gb_Apu; // TODO: handle out of memory
-		reset_apu();
-	}
-
 	apply_muting();
 	apply_volume();
+
+	SLOG("[ EXIT] ST-BUF=%X, GB-APU=%X", (int)stereo_buffer, (int)gb_apu);
 }
 
 void soundShutdown()
@@ -522,6 +550,16 @@ int soundGetEnable()
 
 void soundReset()
 {
+	SLOG("[ENTER] soundDriver=%X", (int)soundDriver);
+
+	if (NULL == soundDriver)
+	{
+		if (false == soundInit())
+		{
+			return;
+		}
+	}
+
 	soundDriver->reset();
 
 	remake_stereo_buffer();
@@ -531,7 +569,9 @@ void soundReset()
 	SOUND_CLOCK_TICKS = SOUND_CLOCK_TICKS_;
 	soundTicks        = SOUND_CLOCK_TICKS_;
 
-	soundEvent( NR52, (u8) 0x80 );
+	soundEvent_u8( NR52, (u8) 0x80 );
+
+	SLOG("[ EXIT] soundDriver=%X", (int)soundDriver);
 }
 
 bool soundInit()
@@ -816,3 +856,7 @@ void soundReadGame( gzFile in, int version )
 
 	apply_muting();
 }
+
+
+
+#endif // #if 0

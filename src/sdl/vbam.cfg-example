@@ -53,6 +53,35 @@ Joy0_Capture=0125
 Joy0_AutoA=0071
 Joy0_AutoB=0077
 
+# Left          Left Arrow  (00000114)
+# Right         Right Arrow (00000113)
+# Up            Up Arrow    (00000111)
+# Down          Down Arrow  (00000112)
+# A             Z           (0000007a)
+# B             X           (00000078)
+# L             A           (00000061)
+# R             S           (00000073)
+# Start         ENTER       (0000000d)
+# Select        BACKSPACE   (00000008)
+# Speed up      SPACE       (00000020)
+# Capture       F12         (00000125)
+# Auto A        Q           (00000071)
+# Auto B        W           (00000077)
+Joy1_Left=0114
+Joy1_Right=0113
+Joy1_Up=0111
+Joy1_Down=0112
+Joy1_A=007a
+Joy1_B=0078
+Joy1_L=0061
+Joy1_R=0073
+Joy1_Start=000d
+Joy1_Select=0008
+Joy1_Speed=0020
+Joy1_Capture=0125
+Joy1_AutoA=0071
+Joy1_AutoB=0077
+
 # Motion support keys. Same format as above
 #
 # Default keys are (value in parenthesis):

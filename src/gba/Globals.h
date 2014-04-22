@@ -114,7 +114,7 @@ extern u32 stop;
 extern int saveType;
 extern bool useBios;
 extern bool skipBios;
-extern int frameSkip;
+extern int  frameSkip;
 extern bool speedup;
 extern bool synchronize;
 extern bool cpuDisableSfx;
@@ -132,6 +132,7 @@ extern int customBackdropColor;
 
 extern u8 *bios;
 extern u8 *rom;
+extern u8 *romMirror;
 extern u8 *internalRAM;
 extern u8 *workRAM;
 extern u8 *paletteRAM;
@@ -140,82 +141,146 @@ extern u8 *pix;
 extern u8 *oam;
 extern u8 *ioMem;
 
-extern u16 DISPCNT;
-extern u16 DISPSTAT;
-extern u16 VCOUNT;
-extern u16 BG0CNT;
-extern u16 BG1CNT;
-extern u16 BG2CNT;
-extern u16 BG3CNT;
-extern u16 BG0HOFS;
-extern u16 BG0VOFS;
-extern u16 BG1HOFS;
-extern u16 BG1VOFS;
-extern u16 BG2HOFS;
-extern u16 BG2VOFS;
-extern u16 BG3HOFS;
-extern u16 BG3VOFS;
-extern u16 BG2PA;
-extern u16 BG2PB;
-extern u16 BG2PC;
-extern u16 BG2PD;
-extern u16 BG2X_L;
-extern u16 BG2X_H;
-extern u16 BG2Y_L;
-extern u16 BG2Y_H;
-extern u16 BG3PA;
-extern u16 BG3PB;
-extern u16 BG3PC;
-extern u16 BG3PD;
-extern u16 BG3X_L;
-extern u16 BG3X_H;
-extern u16 BG3Y_L;
-extern u16 BG3Y_H;
-extern u16 WIN0H;
-extern u16 WIN1H;
-extern u16 WIN0V;
-extern u16 WIN1V;
-extern u16 WININ;
-extern u16 WINOUT;
-extern u16 MOSAIC;
-extern u16 BLDMOD;
-extern u16 COLEV;
-extern u16 COLY;
-extern u16 DM0SAD_L;
-extern u16 DM0SAD_H;
-extern u16 DM0DAD_L;
-extern u16 DM0DAD_H;
-extern u16 DM0CNT_L;
-extern u16 DM0CNT_H;
-extern u16 DM1SAD_L;
-extern u16 DM1SAD_H;
-extern u16 DM1DAD_L;
-extern u16 DM1DAD_H;
-extern u16 DM1CNT_L;
-extern u16 DM1CNT_H;
-extern u16 DM2SAD_L;
-extern u16 DM2SAD_H;
-extern u16 DM2DAD_L;
-extern u16 DM2DAD_H;
-extern u16 DM2CNT_L;
-extern u16 DM2CNT_H;
-extern u16 DM3SAD_L;
-extern u16 DM3SAD_H;
-extern u16 DM3DAD_L;
-extern u16 DM3DAD_H;
-extern u16 DM3CNT_L;
-extern u16 DM3CNT_H;
-extern u16 TM0D;
-extern u16 TM0CNT;
-extern u16 TM1D;
-extern u16 TM1CNT;
-extern u16 TM2D;
-extern u16 TM2CNT;
-extern u16 TM3D;
-extern u16 TM3CNT;
-extern u16 P1;
-extern u16 IE;
-extern u16 IF;
-extern u16 IME;
+// BIOS virtual base will only work for Private BIOS code
+#define DIS_ENABLE        0
+
+#ifdef __X86__
+#define BIOS_VIRTUAL_BASE 0
+#else
+#define BIOS_VIRTUAL_BASE 0x10000000
+#endif
+
+#if (BIOS_VIRTUAL_BASE)
+#define GBAVM_ADDR        0
+#else
+#define GBAVM_ADDR        0x10000000
+#endif
+
+#define BIOS_ADDR_BASE    (0x00000000)
+#define BIOS_ADDR         (void*)(BIOS_ADDR_BASE+GBAVM_ADDR+BIOS_VIRTUAL_BASE)
+#define BIOS_SIZE         0x00004000
+
+#define WORKRAM_NAME      "/GBAWRAM"
+#define WORKRAM_ADDR_BASE (0x02000000)
+#define WORKRAM_ADDR      (void*)(WORKRAM_ADDR_BASE)
+#define WORKRAM_SIZE      0x00040000
+
+#define INTRAM_NAME       "/GBAIRAM"
+#define INTRAM_ADDR_BASE  (0x03000000)
+#define INTRAM_ADDR       (void*)(INTRAM_ADDR_BASE)
+#define INTRAM_SIZE       0x00008000
+
+#define IOMEM_ADDR_BASE   (0x04000000)
+#define IOMEM_ADDR        (void*)(IOMEM_ADDR_BASE)
+#define IOMEM_SIZE        0x00000400
+
+#define PALETTE_ADDR_BASE (0x05000000)
+#define PALETTE_ADDR      (void*)(PALETTE_ADDR_BASE)
+#define PALETTE_SIZE      0x00000400
+
+#define VRAM_ADDR_BASE    (0x06000000)
+#define VRAM_ADDR         (void*)(VRAM_ADDR_BASE)
+#define VRAM_SIZE         0x00020000
+
+#define OAM_ADDR_BASE     (0x07000000)
+#define OAM_ADDR          (void*)(OAM_ADDR_BASE)
+#define OAM_SIZE          0x00000400
+
+#define ROM_NAME          "/GBAROM"
+#define ROM_ADDR_BASE     (0x08000000)
+#define ROM_ADDR          (void*)(ROM_ADDR_BASE+GBAVM_ADDR)
+#define ROM_SIZE          0x02000000
+
+#define PIX_SIZE
+
+extern u16 io_registers[1024];
+
+typedef enum
+{
+  REG_DISPCNT            = 0x00,
+  REG_DISPSTAT           = 0x04,
+  REG_VCOUNT             = 0x06,
+  REG_BG0CNT             = 0x08,
+  REG_BG1CNT             = 0x0A,
+  REG_BG2CNT             = 0x0C,
+  REG_BG3CNT             = 0x0E,
+  REG_BG0HOFS            = 0x10,
+  REG_BG0VOFS            = 0x12,
+  REG_BG1HOFS            = 0x14,
+  REG_BG1VOFS            = 0x16,
+  REG_BG2HOFS            = 0x18,
+  REG_BG2VOFS            = 0x1A,
+  REG_BG3HOFS            = 0x1C,
+  REG_BG3VOFS            = 0x1E,
+  REG_BG2PA              = 0x20,
+  REG_BG2PB              = 0x22,
+  REG_BG2PC              = 0x24,
+  REG_BG2PD              = 0x26,
+  REG_BG2X_L             = 0x28,
+  REG_BG2X_H             = 0x2A,
+  REG_BG2Y_L             = 0x2C,
+  REG_BG2Y_H             = 0x2E,
+  REG_BG3PA              = 0x30,
+  REG_BG3PB              = 0x32,
+  REG_BG3PC              = 0x34,
+  REG_BG3PD             = 0x36,
+  REG_BG3X_L             = 0x38,
+  REG_BG3X_H             = 0x3A,
+  REG_BG3Y_L             = 0x3C,
+  REG_BG3Y_H             = 0x3E,
+  REG_WIN0H              = 0x40,
+  REG_WIN1H              = 0x42,
+  REG_WIN0V              = 0x44,
+  REG_WIN1V              = 0x46,
+  REG_WININ              = 0x48,
+  REG_WINOUT             = 0x4A,
+  REG_MOSAIC             = 0x4C,
+  REG_BLDMOD             = 0x50,
+//  REG_BLDCNT = 0x28,
+//  REG_BLDALPHA = 0x29,
+//  REG_BLDY = 0x2A,
+  REG_COLEV              = 0x52,
+  REG_COLY               = 0x54,
+  REG_DM0SAD_L           = 0xB0,
+  REG_DM0SAD_H           = 0xB2,
+  REG_DM0DAD_L           = 0xB4,
+  REG_DM0DAD_H           = 0xB6,
+  REG_DM0CNT_L           = 0xB8,
+  REG_DM0CNT_H           = 0xBA,
+  REG_DM1SAD_L           = 0xBC,
+  REG_DM1SAD_H           = 0xBE,
+  REG_DM1DAD_L           = 0xC0,
+  REG_DM1DAD_H           = 0xC2,
+  REG_DM1CNT_L           = 0xC4,
+  REG_DM1CNT_H           = 0xC6,
+  REG_DM2SAD_L           = 0xC8,
+  REG_DM2SAD_H           = 0xCA,
+  REG_DM2DAD_L           = 0xCC,
+  REG_DM2DAD_H           = 0xCE,
+  REG_DM2CNT_L           = 0xD0,
+  REG_DM2CNT_H           = 0xD2,
+  REG_DM3SAD_L           = 0xD4,
+  REG_DM3SAD_H           = 0xD6,
+  REG_DM3DAD_L           = 0xD8,
+  REG_DM3DAD_H           = 0xDA,
+  REG_DM3CNT_L           = 0xDC,
+  REG_DM3CNT_H           = 0xDE,
+  REG_TM0D               = 0x100,
+  REG_TM0CNT             = 0x102,
+  REG_TM1D               = 0x104,
+  REG_TM1CNT             = 0x106,
+  REG_TM2D               = 0x108,
+  REG_TM2CNT             = 0x10A,
+  REG_TM3D               = 0x10C,
+  REG_TM3CNT             = 0x10E,
+  REG_P1                 = 0x130,
+  REG_P1CNT              = 0x132,
+  REG_RCNT               = 0x134,
+  REG_IE                 = 0x200,
+  REG_IF                 = 0x202,
+  REG_IME                = 0x208,
+  REG_HALTCNT            = 0x300
+} hardware_register;
+
 
 #endif // GLOBALS_H

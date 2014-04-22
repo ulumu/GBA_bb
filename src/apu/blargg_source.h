@@ -17,7 +17,7 @@ unprefixed names. */
 // in MY code.
 //
 // void assert( bool expr );
-#include <assert.h>
+#include <System.h>
 
 // If expr is false, prints file and line number, then aborts program. Meant for
 // checking caller-supplied parameters and operations that are outside the control
@@ -25,7 +25,7 @@ unprefixed names. */
 //
 // void require( bool expr );
 #undef  require
-#define require( expr ) assert( expr )
+#define require( expr ) ASSERT( expr )
 
 // Like printf() except output goes to debugging console/file.
 //

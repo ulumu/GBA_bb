@@ -51,7 +51,7 @@ inline const char* Gb_Apu::save_load( gb_apu_state_t* io, bool save )
 	REFLECT( version, version );
 
 	// Registers and wave RAM
-	assert( regs_size == sizeof io->regs );
+	ASSERT( regs_size == sizeof io->regs );
 	if ( save )
 		memcpy( io->regs, regs, sizeof io->regs );
 	else

@@ -1,8 +1,17 @@
 VBAMpb BB10 Port of VBA-M GBA/GB/GBC emulator
 
-misc\roms\gba        place unzipped .gba games in here (sdcard or phone)
-                     place gba.bin file here if you wish to play games...
+misc\roms\gba        place unzipped .gba or .gb games in here (sdcard or phone)
 misc\gbaemu          configuration, saves and other stuff.
+
+v1.2.0.3
+
+- New virtual memory model
+- Optimized memory access based on new virtual memory model
+- Optimized internal GBA Bios functions, eliminates external GBA BIOS file
+- Cheat Support
+- Screen resize
+- Fast Forward
+- Joypad button mapping through vbam.cfg
 
 v1.0.5.4
 

@@ -59,8 +59,8 @@ extern float soundFiltering;    // 0.0 = none, 1.0 = max
 void soundReset();
 
 // Emulates write to sound hardware
-void soundEvent( u32 addr, u8  data );
-void soundEvent( u32 addr, u16 data ); // TODO: error-prone to overload like this
+void soundEvent_u8( u32 addr, u8  data );
+void soundEvent_u16( u32 addr, u16 data );
 
 // Notifies emulator that a timer has overflowed
 void soundTimerOverflow( int which );
@@ -79,6 +79,6 @@ void soundReadGame( gzFile, int version );
 
 class Multi_Buffer;
 
-void flush_samples(Multi_Buffer * buffer);
+//void flush_samples(Multi_Buffer * buffer);
 
 #endif // SOUND_H

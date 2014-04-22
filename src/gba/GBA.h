@@ -50,21 +50,33 @@ typedef union {
 #endif
 } reg_pair;
 
+
+
 #ifndef NO_GBA_MAP
 extern memoryMap map[256];
 #endif
 
-extern reg_pair reg[45];
+typedef struct
+{
+	reg_pair reg[45];
+	bool busPrefetch;
+	bool busPrefetchEnable;
+	uint32_t busPrefetchCount;
+	uint32_t armNextPC;
+} bus_t;
+
+
 extern u8 biosProtected[4];
 
-extern bool N_FLAG;
-extern bool Z_FLAG;
-extern bool C_FLAG;
-extern bool V_FLAG;
+//extern u32  N_FLAG;
+//extern u32  Z_FLAG;
+//extern u32  C_FLAG;
+//extern u32  V_FLAG;
 extern bool armIrqEnable;
 extern bool armState;
 extern int armMode;
 extern void (*cpuSaveGameFunc)(u32,u8);
+extern bus_t bus;
 
 #ifdef BKPT_SUPPORT
 extern u8 freezeWorkRAM[0x40000];
@@ -95,7 +107,6 @@ extern bool CPUWriteMemState(char *, int);
 extern bool CPUWriteState(const char *);
 extern int CPULoadRom(const char *);
 extern void doMirroring(bool);
-extern void CPUUpdateRegister(u32, u16);
 extern void applyTimer ();
 extern void CPUInit(const char *,bool);
 extern void CPUReset();
@@ -110,6 +121,9 @@ extern void cpuEnableProfiling(int hz);
 #endif
 
 extern struct EmulatedSystem GBASystem;
+
+#define BITS_16 0
+#define BITS_32 1
 
 #define R13_IRQ  18
 #define R14_IRQ  19
@@ -134,6 +148,8 @@ extern struct EmulatedSystem GBASystem;
 #define R14_FIQ  43
 #define SPSR_FIQ 44
 
+#define CACHE_PREFETCH(x) __builtin_prefetch(&x)
+
 #include "Cheats.h"
 #include "Globals.h"
 #include "EEprom.h"
@@ -155,5 +171,13 @@ extern u32 __lsr_imm_nc;
 extern u32 __lsr_reg_nc;
 extern u32 __imm_nc;
 
+#ifdef __GBAREG_OPTIMIZE__
+typedef void (*gbaRegUpdate_t)(u32 address, u16 value);
+extern gbaRegUpdate_t gbaRegUpdateFunc[1024];
+
+#define CPUUpdateRegister(address, value)  gbaRegUpdateFunc[address](address, value)
+#else
+extern void CPUUpdateRegister(u32, u16);
+#endif
 
 #endif // GBA_H

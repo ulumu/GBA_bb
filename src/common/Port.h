@@ -46,13 +46,13 @@ static inline u32 swap32(u32 v)
 #endif
 #else
 #define READ16LE(x) \
-  *((u16 *)x)
+  *((u16 *)(x))
 #define READ32LE(x) \
-  *((u32 *)x)
+  *((u32 *)(x))
 #define WRITE16LE(x,v) \
-  *((u16 *)x) = (v)
+  *((u16 *)(x)) = (v)
 #define WRITE32LE(x,v) \
-  *((u32 *)x) = (v)
+  *((u32 *)(x)) = (v)
 #endif
 
 #endif // PORT_H

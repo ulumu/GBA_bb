@@ -27,6 +27,8 @@
 #include <sys/stat.h>
 #include <cmath>
 #include <fstream>
+#include <errno.h>
+
 #ifdef __APPLE__
 #include <OpenGL/glu.h>
 #include <OpenGL/glext.h>
@@ -50,7 +52,9 @@ using namespace std;
 #include <SDL.h>
 
 #include "../common/Patch.h"
+#include "../common/Port.h"
 #include "../gba/GBA.h"
+#include "../gba/GBAcpu.h"
 #include "../gba/agbprint.h"
 #include "../gba/Flash.h"
 #include "../gba/Cheats.h"
@@ -74,6 +78,7 @@ using namespace std;
 #include "text.h"
 #include "inputSDL.h"
 #include "../common/SoundSDL.h"
+#include "bbDialog.h"
 
 #ifndef _WIN32
 # include <unistd.h>
@@ -98,11 +103,15 @@ using namespace std;
 #include <lirc/lirc_client.h>
 #endif
 
+bool InitLink(void);
+
 #ifdef __PLAYBOOK__
 static pthread_mutex_t loader_mutex = PTHREAD_MUTEX_INITIALIZER;
-static vector<string> vecList;
-static vector<string> sdvecList;
-vector<string> sortedvecList;
+static vector<string> romList;
+static vector<string> sortedRomList;
+
+static vector<string> cheatList;
+static vector<string> sortedCheatList;
 #endif
 
 extern void remoteInit();
@@ -116,6 +125,16 @@ extern void remoteSetPort(int);
 void sdlInitVideo();
 
 char g_runningFile_str[512];
+
+static bbDialog *dbgDialog = NULL;
+static char dbgString[256];
+
+#define DLOG(fmt, ...) \
+	if (dbgDialog)     \
+	{                  \
+		sprintf(dbgString, fmt, ##__VA_ARGS__); \
+		dbgDialog->showNotification(dbgString); \
+	}
 
 struct EmulatedSystem emulator = {
 	NULL,
@@ -144,7 +163,11 @@ int systemColorDepth = 0;
 int systemDebug = 0;
 int systemVerbose = 0;
 int systemFrameSkip = 0;
+int systemRenderFps = 60;
 int systemSaveUpdateCounter = SYSTEM_SAVE_NOT_UPDATED;
+int systemSoundQuality = 2;
+int systemSoundDeclicking = 0;
+int systemSoundRes = 0x30F;
 
 int g_srcPitch = 0;
 int g_srcWidth =  0;
@@ -204,6 +227,7 @@ static int rewindCounter = 0;
 static int rewindCount = 0;
 static bool rewindSaveNeeded = false;
 static int rewindTimer = 0;
+static float curFps;
 
 static int sdlSaveKeysSwitch = 0;
 // if 0, then SHIFT+F# saves, F# loads (old VBA, ...)
@@ -276,6 +300,13 @@ char *arg0;
 
 int g_LOADING_ROM;
 extern bool stopState;  // cpu loop control
+
+// CHEAT support
+#define MAX_CHEATS    100
+#define MAX_CHEAT_LEN 200
+static  int  sdlPreparedCheats	= 0;
+static  char sdlPreparedCheatCodes[MAX_CHEATS][MAX_CHEAT_LEN];
+
 
 // OpenGL ES2.0
 //-------------------------------------------------------------------------------------------------
@@ -406,9 +437,16 @@ static int sdlOpenGLInit(int width, int height)
 		SLOG("Basic fragment shader used");
 		break;
 	case 2:
+#ifdef STL100_1
+		g_openGL  = 1;
+		fs        = (char *)fs_basic;
+		texfilter = GL_NEAREST;
+		SLOG("Basic fragment shader used for STL100-1 device");
+#else
 		fs        = (char *)fs_fxaa;
 		texfilter = GL_LINEAR;
 		SLOG("FXAA fragment shader used");
+#endif
 		break;
 	case 3:
 	{
@@ -539,7 +577,10 @@ void updateSurface(u32 w, u32 h, u8 *pixels)
 	glBindTexture(GL_TEXTURE_2D, textures[writableScreen]);
 	writableScreen = writableScreen ^ 1;
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA, w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
+	if (systemColorDepth == 16)
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, pixels);
+	else if (systemColorDepth == 32)
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA, w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
 
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glEnableVertexAttribArray(positionAttrib);
@@ -553,7 +594,7 @@ void updateSurface(u32 w, u32 h, u8 *pixels)
 
 //-------------------------------------------------------------------------------------------------
 
-void GetRomDirListing(vector<string> &vsList, const char *dpath )
+void GetRomDirListing(vector<string> &romList, vector<string> &cheatList, const char *dpath )
 {
 #ifdef __PLAYBOOK__
 	DIR* dirp;
@@ -574,7 +615,7 @@ void GetRomDirListing(vector<string> &vsList, const char *dpath )
 			direntp = readdir64( dirp );
 			if( direntp == NULL )
 			{
-				SLOG("End of readdir");
+				SLOG("End of readdir64");
 				break;
 			}
 
@@ -596,12 +637,16 @@ void GetRomDirListing(vector<string> &vsList, const char *dpath )
 				tmp = dpath;
 				tmp += direntp->d_name;
 				SLOG("ROM: %s", tmp.c_str());
-				vsList.push_back(tmp);
+				romList.push_back(tmp);
 			}
-			else
+			else if(
+				(tmp.substr(tmp.find_last_of(".") + 1) == "cht") ||
+				(tmp.substr(tmp.find_last_of(".") + 1) == "CHT")   )
 			{
-				string tmp2 = tmp.substr(tmp.find_last_of("."));
-				SLOG("Not regonized filetype: %s", tmp2.c_str() );
+				tmp = dpath;
+				tmp += direntp->d_name;
+				SLOG("CHEAT: %s", tmp.c_str());
+				cheatList.push_back(tmp);
 			}
 		}
 		closedir(dirp);
@@ -616,11 +661,10 @@ void GetRomDirListing(vector<string> &vsList, const char *dpath )
 
 
 
-//
-//
-//
 
-
+//
+//
+//
 vector<string> sortAlpha(vector<string> sortThis)
 {
 	int swap;
@@ -658,6 +702,7 @@ void initGbFrameSize(void)
 		g_srcWidth  = 240;
 		g_srcHeight = 160;
 		systemFrameSkip = frameSkip;
+		systemRenderFps = 60 - frameSkip;
 	} else if (cartridgeType == 1) {
 		if(gbBorderOn) {
 			if (gbSgbMode)
@@ -678,11 +723,12 @@ void initGbFrameSize(void)
 		} else {
 			g_srcWidth         = GB_ACTUAL_WIDTH;
 			g_srcHeight        = GB_ACTUAL_HEIGHT;
-			gbBorderLineSkip   = GB_ACTUAL_WIDTH;
+			gbBorderLineSkip   = 0; //GB_ACTUAL_WIDTH;
 			gbBorderColumnSkip = 0;
 			gbBorderRowSkip    = 0;
 		}
 		systemFrameSkip = gbFrameSkip;
+		systemRenderFps = 60 - gbFrameSkip;
 	} else {
 		g_srcWidth  = 320;
 		g_srcHeight = 240;
@@ -704,19 +750,19 @@ int AutoLoadRom(void)
 
 	pthread_mutex_lock(&loader_mutex);
 
-	list = (const char**)malloc(sortedvecList.size()*sizeof(char*));
+	list = (const char**)malloc(sortedRomList.size()*sizeof(char*));
 
 	// Create Dialog file list, only the filename without the FULL path
-	for(count=0; count < sortedvecList.size(); count++)
+	for(count=0; count < sortedRomList.size(); count++)
 	{
-		romfilename = sortedvecList.at(count);
-		list[count] = sortedvecList[count].c_str() + romfilename.find_last_of("/") + 1;
+		romfilename = sortedRomList.at(count);
+		list[count] = sortedRomList[count].c_str() + romfilename.find_last_of("/") + 1;
 	}
 
 	dialog = new bbDialog;
 	if (dialog)
 	{
-		gameIndex = dialog->showPopuplistDialog(list, sortedvecList.size(), "ROM Selector");
+		gameIndex = dialog->showPopuplistDialog(list, sortedRomList.size(), "ROM Selector");
 		delete dialog;
 		free(list);
 
@@ -731,7 +777,7 @@ int AutoLoadRom(void)
 			return false;
 		}
 		else
-			romfilename = sortedvecList[gameIndex];
+			romfilename = sortedRomList[gameIndex];
 	}
 
 	//test end
@@ -741,7 +787,7 @@ int AutoLoadRom(void)
 	memset(&g_runningFile_str[0],0,64);
 	sprintf(&g_runningFile_str[0], romfilename.c_str());
 
-	SLOG("loading: %d/%d '%s'\n",gameIndex + 1, sortedvecList.size(), romfilename.c_str() );
+	SLOG("loading: %d/%d '%s'\n",gameIndex + 1, sortedRomList.size(), romfilename.c_str() );
 	strcpy(filename, romfilename.c_str());
 
 
@@ -835,6 +881,7 @@ int AutoLoadRom(void)
 
 		SLOG("CPUInit '%s' %d", biosFileName, useBios);
 
+		useBios = false;
 		CPUInit(biosFileName, useBios);
 
 		SLOG("CPUReset");
@@ -861,12 +908,22 @@ int AutoLoadRom(void)
 
 void UpdateRomList(void)
 {
-	GetRomDirListing(vecList, SYSROMDIR);
-	GetRomDirListing(vecList, SDCARDROMDIR);
+	SLOG("Obtain Device ROM list and CHEAT list...");
+	GetRomDirListing(romList, cheatList, SYSROMDIR);
 
-	if (vecList.size() > 0)
+	SLOG("Obtain SD-Card ROM list and CHEAT list...");
+	GetRomDirListing(romList, cheatList, SDCARDROMDIR);
+
+	SLOG("Total ROMS found: %d", romList.size() );
+	SLOG("Total CHEATS found: %d", cheatList.size() );
+	if (romList.size() > 0)
 	{
-		sortedvecList = sortAlpha(vecList);
+		sortedRomList = sortAlpha(romList);
+
+		if (cheatList.size() > 0)
+		{
+			sortedCheatList = sortAlpha(cheatList);
+		}
 	}
 	else
 	{
@@ -882,11 +939,126 @@ void UpdateRomList(void)
 	}
 }
 
+bool showCheatSelectionDialog(void)
+{
+	const char  **list = 0;
+	int           count = 0;
+	int           cheatListIdx;
+	string        cheatfilename;
+	bbDialog     *dialog;
 
+	if (sortedCheatList.size() == 0)
+	{
+		dialog = new bbDialog;
+		if (dialog)
+		{
+			dialog->showAlert(
+					"Cheat File Not Found",
+					"Please place cheat files (.CHT) in the ROM folder.\n"
+					"Format is based on Gameshark / Action Replay, support V1/V3.\n"
+					"First line must indicate V1/V3, rest is code/comments, e.g.\n"
+					"\nV3\n"
+					"// Pokemon Emerald patches\n"
+					"// Master Code - must be ON\n"
+					"B749822B CE9BFAC1\n"
+					"A86CDBA5 19BA49B3\n"
+					"// Pikachu - Wild pokemon modifier\n"
+					"BC7EC610 A4B1CCA6");
+		}
+		return false;
+	}
 
-int sdlPreparedCheats	= 0;
-#define MAX_CHEATS 100
-const char * sdlPreparedCheatCodes[MAX_CHEATS];
+	list = (const char**)malloc(sortedCheatList.size()*sizeof(char*));
+
+	// ROM selection
+	if (list)
+	{
+		for(count = 0; count < sortedCheatList.size(); count++)
+		{
+			cheatfilename = sortedCheatList.at(count);
+			list[count]   = sortedCheatList[count].c_str() + cheatfilename.find_last_of("/") + 1;
+		}
+
+		dialog = new bbDialog;
+
+		if (dialog)
+		{
+			cheatListIdx = dialog->showPopuplistDialog(list, sortedCheatList.size(), "CHEAT selector");
+			delete dialog;
+			free(list);
+
+			if (cheatListIdx >= 0)
+			{
+				cheatfilename = sortedCheatList.at(cheatListIdx);
+			}
+			else
+			{
+				SLOG("Bad selection index from Popup List Dialog");
+				return false;
+			}
+		}
+		else
+		{
+			SLOG("Fail creating BB dialog, quiting");
+			return false;
+		}
+	}
+	else
+	{
+		SLOG("Out of Memory, Fail creating CHEAT list, quiting!!");
+		return false;
+	}
+
+	sdlPreparedCheats = 0;
+
+	FILE *fIn = fopen(cheatfilename.c_str(), "r");
+	if (fIn)
+	{
+		while(fgets(sdlPreparedCheatCodes[sdlPreparedCheats++], MAX_CHEAT_LEN-1, fIn));
+
+		int i;
+		bool isV3 = true;
+
+		if (sdlPreparedCheats > 0)
+		{
+			cheatsDeleteAll(false);
+		}
+
+		for (i=0; i<sdlPreparedCheats; i++) {
+			char *p;
+			int	  l;
+			p	= sdlPreparedCheatCodes[i];
+			l	= strlen(p);
+
+			// skip comments
+			if(p[0] == '#' || p[0] == '/') continue;
+			else if (i==0 && p[0] == 'V' && p[1] == '1')  isV3 = false;
+			else if (i==0 && p[0] == 'V' && p[1] == '3')  isV3 = true;
+
+			// elimiate Carriage return and linefeed char
+			while (l> 0 && (p[l-1] == '\n' || p[l-1] == '\r'))
+			{
+				p[l-1] = '\0';
+				--l;
+			}
+
+			if (l == 17 && p[8] == ' ') {
+				SLOG("Adding cheat code %s", p);
+				cheatsAddGSACode(p, p, isV3);
+			} else if (l == 13 && p[8] == ' ') {
+				SLOG("Adding CBA cheat code %s", p);
+				cheatsAddCBACode(p, p);
+			} else if (l == 8) {
+				SLOG("Adding GB(GS) cheat code %s", p);
+				gbAddGsCheat(p, p);
+			}
+		}
+
+		fclose(fIn);
+	}
+
+	return (sdlPreparedCheats > 0) ? true : false;
+}
 
 #define SDL_SOUND_MAX_VOLUME 2.0
 #define SDL_SOUND_ECHO       0.2
@@ -1330,6 +1502,7 @@ void sdlReadPreferences(FILE *f)
 			g_openGL = sdlFromHex(value);
 		} else if(!strcmp(key, "logToFile")) {
 			g_logtofile = sdlFromHex(value);
+			if (g_logtofile) dbgDialog = new (bbDialog);
 			g_flogfile = fopen(SYSCONFDIR"/logs", "w");
 			if (g_flogfile == NULL) g_logtofile = 0;
 		} else if(!strcmp(key, "Motion_Left")) {
@@ -1361,7 +1534,7 @@ void sdlReadPreferences(FILE *f)
 		} else if(!strcmp(key, "filter")) {
 			filter = (Filter)sdlFromDec(value);
 			if(filter < kStretch1x || filter >= kInvalidFilter)
-				filter = kStretch2x;
+				filter = kStretch1x;
 		} else if(!strcmp(key, "disableStatus")) {
 			disableStatusMessages = sdlFromHex(value) ? true : false;
 		} else if(!strcmp(key, "borderOn")) {
@@ -1386,22 +1559,20 @@ void sdlReadPreferences(FILE *f)
 		} else if(!strcmp(key, "captureFormat")) {
 			captureFormat = sdlFromHex(value);
 		} else if(!strcmp(key, "soundQuality")) {
-			int soundQuality = sdlFromHex(value);
-			switch(soundQuality) {
+			systemSoundQuality = sdlFromHex(value);
+			switch(systemSoundQuality) {
+			case 0:
 			case 1:
 			case 2:
 			case 4:
 				break;
 			default:
-				SLOG( "Unknown sound quality %d. Defaulting to 22Khz\n",
-						soundQuality);
-				soundQuality = 2;
+				SLOG( "Unknown sound quality %d. Defaulting to 22Khz\n", systemSoundQuality);
+				systemSoundQuality = 2;
 				break;
 			}
-			soundSetSampleRate(44100 / soundQuality);
 		} else if(!strcmp(key, "soundEnable")) {
-			int res = sdlFromHex(value) & 0x30f;
-			soundSetEnable(res);
+			systemSoundRes = sdlFromHex(value) & 0x30f;
 		} else if(!strcmp(key, "soundStereo")) {
 			if (sdlFromHex(value)) {
 				gb_effects_config.stereo = SDL_SOUND_STEREO;
@@ -1418,7 +1589,7 @@ void sdlReadPreferences(FILE *f)
 				gb_effects_config.enabled = true;
 			}
 		} else if(!strcmp(key, "declicking")) {
-			gbSoundSetDeclicking(sdlFromHex(value) != 0);
+			systemSoundDeclicking = sdlFromHex(value);
 		} else if(!strcmp(key, "soundVolume")) {
 			float volume = sdlFromDec(value) / 100.0;
 			if (volume < 0.0 || volume > SDL_SOUND_MAX_VOLUME)
@@ -1766,7 +1937,7 @@ void sdlInitVideo() {
 	} else
 		flags |= SDL_HWSURFACE | SDL_DOUBLEBUF;
 
-	if (fullscreen && g_openGL) {
+	if (g_openGL) {
 		screenWidth  = 480;
 		screenHeight = 320;
 	} else {
@@ -1776,7 +1947,11 @@ void sdlInitVideo() {
 
 	SLOG("video size: %d x %d", screenWidth, screenHeight);
 
+#ifdef GBA_USE_RGBA8888
 	g_surface = SDL_SetVideoMode(screenWidth, screenHeight, 32, flags);
+#else
+	g_surface = SDL_SetVideoMode(screenWidth, screenHeight, 16, flags);
+#endif
 
 	if(g_surface == NULL) {
 		SLOG("g_surface is NULL!\n");
@@ -1794,10 +1969,10 @@ void sdlInitVideo() {
 	systemColorDepth = g_surface->format->BitsPerPixel;
 
 	if(systemColorDepth == 16) {
-		g_srcPitch = g_srcWidth*2 + 4;
+		g_srcPitch = g_srcWidth*2;
 	} else {
 		if(systemColorDepth == 32)
-			g_srcPitch = g_srcWidth*4 + 4;
+			g_srcPitch = g_srcWidth*4;
 		else
 			g_srcPitch = g_srcWidth*3;
 	}
@@ -1970,7 +2145,6 @@ static void sdlHandleSavestateKey(int num, int shifted)
 
 void sdlPollEvents()
 {
-	bbDialog dialog;
 	SDL_Event event;
 	while(SDL_PollEvent(&event)) {
 		switch(event.type) {
@@ -2029,9 +2203,11 @@ void sdlPollEvents()
 		case SDL_JOYBUTTONDOWN:
 		case SDL_JOYBUTTONUP:
 		case SDL_JOYAXISMOTION:
+		case SDL_SYSWMEVENT:
 		case SDL_KEYDOWN:
 			inputProcessSDLEvent(event);
 			break;
+
 		case SDL_KEYUP:
 			switch(event.key.keysym.sym) {
 			case SDLK_r:
@@ -2064,14 +2240,6 @@ void sdlPollEvents()
 						(event.key.keysym.mod & KMOD_CTRL))
 					change_rewind( (rewindTopPos - rewindPos) * ((rewindTopPos>rewindPos) ? +1:-1) );
 				break;
-			case SDLK_e:
-				if(!(event.key.keysym.mod & MOD_NOCTRL) &&
-						(event.key.keysym.mod & KMOD_CTRL)) {
-					cheatsEnabled = !cheatsEnabled;
-					systemConsoleMessage(cheatsEnabled?"Cheats on":"Cheats off");
-				}
-				break;
-
 			case SDLK_PLUS:
 				//   if(!(event.key.keysym.mod & MOD_NOCTRL) &&
 				//      (event.key.keysym.mod & KMOD_CTRL)
@@ -2088,7 +2256,7 @@ void sdlPollEvents()
 					soundSetEnable( 0 );
 					systemConsoleMessage("Sound OFF");
 					if (!sdlSoundToggledOff) {
-						sdlSoundToggledOff = 0x3ff;
+						sdlSoundToggledOff = 0x30f;
 					}
 				}
 				//	}
@@ -2154,11 +2322,6 @@ void sdlPollEvents()
 				emulating = 0;
 				break;
 			case SDLK_f:
-				if(!(event.key.keysym.mod & MOD_NOCTRL) &&
-						(event.key.keysym.mod & KMOD_CTRL)) {
-					fullscreen = !fullscreen;
-					sdlInitVideo();
-				}
 				break;
 			case SDLK_g:
 				if(!(event.key.keysym.mod & MOD_NOCTRL) &&
@@ -2189,9 +2352,31 @@ void sdlPollEvents()
 #endif
 				break;
 			case SDLK_F1:
+				cheatsEnabled = !cheatsEnabled;
+
+				if (cheatsEnabled)
+				{
+					// Create dialog to ask for .cht file
+					cheatsEnabled = showCheatSelectionDialog();
+					if (!cheatsEnabled)
+					{
+						systemConsoleMessage("Failed loading CHEAT code");
+					}
+				}
+				systemConsoleMessage(cheatsEnabled?"Cheats on":"Cheats off");
+				break;
 			case SDLK_F2:
+				speedup = (speedup == true) ? false : true;
+				systemConsoleMessage(speedup==true?"Fast FWD":"Normal");
+				break;
 			case SDLK_F3:
+				showSpeed ^= 0x8000;
+				systemConsoleMessage((showSpeed&0x8000)?"Show FPS":"Hide FPS");
+				break;
 			case SDLK_F4:
+				fullscreen = !fullscreen;
+				sdlInitVideo();
+				break;
 			case SDLK_F5:
 			case SDLK_F6:
 			case SDLK_F7:
@@ -2254,7 +2439,7 @@ void sdlPollEvents()
 						(event.key.keysym.mod & KMOD_CTRL)) {
 					int mask = 0x0100 << (event.key.keysym.sym - SDLK_1);
 					layerSettings ^= mask;
-					layerEnable = DISPCNT & layerSettings;
+					layerEnable = READ_REG(REG_DISPCNT) & layerSettings;
 					CPUUpdateRenderBuffers(false);
 				}
 				break;
@@ -2266,7 +2451,7 @@ void sdlPollEvents()
 						(event.key.keysym.mod & KMOD_CTRL)) {
 					int mask = 0x0100 << (event.key.keysym.sym - SDLK_1);
 					layerSettings ^= mask;
-					layerEnable = DISPCNT & layerSettings;
+					layerEnable = READ_REG(REG_DISPCNT) & layerSettings;
 				}
 				break;
 
@@ -2501,13 +2686,33 @@ void handleRewinds()
 	}
 }
 
+static bool check_mkdir( const char *path, mode_t mode )
+{
+	struct stat64 st;
+	if(stat64(path, &st) == 0)
+	{
+	    if( (S_ISDIR(st.st_mode)) )
+	    {
+	    	return true;
+	    }
+	}
+
+	if ( (mkdir(path, mode) != 0) && (errno != EEXIST) )
+	{
+		return false;
+	}
+
+	return true;
+}
+
 int main(int argc, char **argv)
 {
-	SLOG( "VBA-M version %s [SDL]\n", VERSION);
+	IMAGE_TYPE type;
+
+	SLOG( "GBAEMU version %s [SDL]\n", GBA_VERSION);
 
 	bps_initialize();
 	dialog_request_events(0);
-
 
 	arg0 = argv[0];
 
@@ -2517,7 +2722,7 @@ int main(int argc, char **argv)
 
 	int op = -1;
 
-	frameSkip = 1;
+	frameSkip  = 1;
 	gbBorderOn = 0;
 
 	parseDebug = false;
@@ -2530,13 +2735,13 @@ int main(int argc, char **argv)
 #ifdef __QNXNTO__
 	// Get home dir
 
-	mkdir("/accounts/1000/shared/misc/roms",0777);
-	mkdir("/accounts/1000/shared/misc/gbaemu", 0777);
-	mkdir("/accounts/1000/shared/misc/gbaemu/savegames", 0777);
+	if (false == check_mkdir("/accounts/1000/shared/misc/roms",0777) ) return -1;
+	if (false == check_mkdir("/accounts/1000/shared/misc/gbaemu", 0777) ) return -1;
+	if (false == check_mkdir("/accounts/1000/shared/misc/gbaemu/savegames", 0777) ) return -1;
 
 	const char *vbaPath = "/accounts/1000/shared/misc/gbaemu";
-	mkdir("/accounts/1000/shared/misc/roms/gba",0777);
-	mkdir(vbaPath,0777);
+	if (false == check_mkdir("/accounts/1000/shared/misc/roms/gba",0777) ) return -1;
+	if (false == check_mkdir(vbaPath,0777) ) return -1;
 
 	homeDir = (char *)vbaPath;
 	useBios = true;
@@ -2548,19 +2753,43 @@ int main(int argc, char **argv)
 		ofstream f2("/accounts/1000/shared/misc/gbaemu/vbam-over.ini", fstream::trunc|fstream::binary);
 		f2 << f1.rdbuf();
 	}
+	else {
+		ifile.close();
+	}
 
 	ifstream ifile2("/accounts/1000/shared/misc/gbaemu/vbam.cfg");
 	if(!ifile2){
 		ifstream f11("app/native/vbam.cfg", fstream::binary);
 		ofstream f22("/accounts/1000/shared/misc/gbaemu/vbam.cfg", fstream::trunc|fstream::binary);
 		f22 << f11.rdbuf();
+	} else {
+		ifile2.close();
 	}
+
+	ifstream ifilecore("logs/GBA_bb.core", fstream::binary);
+	if(ifilecore) {
+		ofstream fOut(SYSCONFDIR"/GBA_bb.core", fstream::trunc|fstream::binary);
+		fOut << ifilecore.rdbuf();
+		ifilecore.close();
+
+		system("rm logs/GBA_bb.core");
+
+		bbDialog *dialog = new (bbDialog);
+
+		if (dialog)
+		{
+			dialog->showAlert("     GBAEMU CoreDump Detected", "A previous Crash COREDUMP is detected, and the COREDUMP file is transferred to misc/gbaemu/GBA_bb.core!!");
+			delete dialog;
+		}
+
+	}
+
+	sdlReadPreferences();
 
 	// Create ROM files list
 	UpdateRomList();
 #endif
 
-	sdlReadPreferences();
 	fflush(stdout);
 	sdlPrintUsage = 0;
 
@@ -2581,10 +2810,7 @@ int main(int argc, char **argv)
 				break;
 			}
 			{
-				char * cpy;
-				cpy	= (char *)malloc(1 + strlen(optarg));
-				strcpy(cpy, optarg);
-				sdlPreparedCheatCodes[sdlPreparedCheats++]	= cpy;
+				strncpy(sdlPreparedCheatCodes[sdlPreparedCheats++], optarg, MAX_CHEAT_LEN-1);
 			}
 			break;
 		case 1001:
@@ -2681,7 +2907,7 @@ int main(int argc, char **argv)
 			if(optarg) {
 				filter = (Filter)atoi(optarg);
 			} else {
-				filter = kStretch2x;
+				filter = kStretch1x;
 			}
 			break;
 		case 'I':
@@ -2781,28 +3007,40 @@ int main(int argc, char **argv)
 		string        romfilename;
 		bbDialog     *dialog;
 
-		list = (const char**)malloc(sortedvecList.size()*sizeof(char*));
+		SLOG("Sorted List: %d", sortedRomList.size() );
+		list = (const char**)malloc(sortedRomList.size()*sizeof(char*));
 
 		// ROM selection
 		if (list)
 		{
-			for(count = 0; count < sortedvecList.size(); count++)
+			for(count = 0; count < sortedRomList.size(); count++)
 			{
-				romfilename = sortedvecList.at(count);
-				list[count] = sortedvecList[count].c_str() + romfilename.find_last_of("/") + 1;
+				romfilename = sortedRomList.at(count);
+				list[count] = sortedRomList[count].c_str() + romfilename.find_last_of("/") + 1;
 			}
 
+			SLOG("Creating BB dialog...");
 			dialog = new bbDialog;
-			gameIndex = dialog->showPopuplistDialog(list, sortedvecList.size(), "ROM selector");
-			delete dialog;
-			free(list);
 
-			if (gameIndex >= 0)
+			if (dialog)
 			{
-				romfilename = sortedvecList.at(gameIndex);
+				gameIndex = dialog->showPopuplistDialog(list, sortedRomList.size(), "GBAEMU [v" GBA_VERSION "]  ROM Selector");
+				delete dialog;
+				free(list);
+
+				if (gameIndex >= 0)
+				{
+					romfilename = sortedRomList.at(gameIndex);
+				}
+				else
+				{
+					SLOG("Bad selection index from Popup List Dialog");
+					return -1;
+				}
 			}
 			else
 			{
+				SLOG("Fail creating BB dialog, quiting");
 				return -1;
 			}
 		}
@@ -2815,7 +3053,7 @@ int main(int argc, char **argv)
 		memset(&g_runningFile_str[0],0,64);
 		sprintf(&g_runningFile_str[0], romfilename.c_str());
 
-		SLOG("loading: %d/%d '%s'\n",gameIndex + 1, sortedvecList.size(), romfilename.c_str() );
+		SLOG("ROM loading: %d/%d '%s'\n",gameIndex + 1, sortedRomList.size(), romfilename.c_str() );
 		strcpy(filename, romfilename.c_str());
 		szFile = romfilename.c_str();
 		SLOG("%s",szFile);
@@ -2865,7 +3103,7 @@ int main(int argc, char **argv)
 			exit(-1);
 		}
 
-		IMAGE_TYPE type = utilFindType(szFile);
+		type = utilFindType(szFile);
 
 		SLOG("'%s' type = %d\n",szFile, type);
 
@@ -2899,6 +3137,7 @@ int main(int argc, char **argv)
 					gbReset();
 				}
 				gbReset();
+				gbSoundSetDeclicking(systemSoundDeclicking != 0);
 			}
 		}
 		else if(type == IMAGE_GBA)
@@ -2916,6 +3155,7 @@ int main(int argc, char **argv)
 
 				SLOG("CPUInit: '%s' %d", biosFileName, useBios);
 
+				useBios = false;
 				CPUInit(biosFileName, useBios);
 				int patchnum;
 				for (patchnum = 0; patchnum < sdl_patch_num; patchnum++) {
@@ -2924,31 +3164,20 @@ int main(int argc, char **argv)
 				}
 				CPUReset();
 			}
+			else
+			{
+				bbDialog     outofmemDialog;
+
+				outofmemDialog.showNotification("ROM loading failure, possible out of memory.\nPlease try again, Quiting now!!");
+
+				exit(-1);
+			}
 		}
 
 		if(failed)
 		{
 			systemMessage(MSG_UNKNOWN_CARTRIDGE_TYPE, "Failed to load file %s", szFile);
 		}
-
-	} else {
-		soundInit();
-		cartridgeType = 0;
-		strcpy(filename, "gnu_stub");
-		rom = (u8 *)malloc(0x2000000);
-		workRAM = (u8 *)calloc(1, 0x40000);
-		bios = (u8 *)calloc(1,0x4000);
-		internalRAM = (u8 *)calloc(1,0x8000);
-		paletteRAM = (u8 *)calloc(1,0x400);
-		vram = (u8 *)calloc(1, 0x20000);
-		oam = (u8 *)calloc(1, 0x400);
-		pix = (u8 *)calloc(1, 4 * 241 * 162);
-		ioMem = (u8 *)calloc(1, 0x400);
-
-		emulator = GBASystem;
-
-		CPUInit(biosFileName, useBios);
-		CPUReset();
 	}
 
 	sdlReadBattery();
@@ -3019,37 +3248,28 @@ int main(int argc, char **argv)
 
 	systemFrameInit();
 
-	SDL_WM_SetCaption("VBA-M", NULL);
-
-	// now we can enable cheats?
-	SLOG("enable cheats ...\n");
-
-	// hard code test cheats for Metroid Fusion testing
-//	sdlPreparedCheatCodes[sdlPreparedCheats++] = "00D0A839 17FE";
-//	sdlPreparedCheatCodes[sdlPreparedCheats++] = "93C80FA3 DF77";
-//	sdlPreparedCheatCodes[sdlPreparedCheats++] = "EEEE8A9B 6B5C";
-//	sdlPreparedCheatCodes[sdlPreparedCheats++] = "5EACC94A 3F4A";
+	if (type == IMAGE_GBA)
 	{
-		int i;
-		for (i=0; i<sdlPreparedCheats; i++) {
-			const char *	p;
-			int	l;
-			p	= sdlPreparedCheatCodes[i];
-			l	= strlen(p);
-			if (l == 17 && p[8] == ':') {
-				SLOG("Adding cheat code %s\n", p);
-				cheatsAddCheatCode(p, p);
-			} else if (l == 13 && p[8] == ' ') {
-				SLOG("Adding CBA cheat code %s\n", p);
-				cheatsAddCBACode(p, p);
-			} else if (l == 8) {
-				SLOG("Adding GB(GS) cheat code %s\n", p);
-				gbAddGsCheat(p, p);
-			} else {
-				SLOG("Unknown format for cheat code %s\n", p);
-			}
+		if(systemSoundQuality != 0)
+		{
+			SLOG("SOUND set sampling rate (%dHz)", 44100 / systemSoundQuality);
+			soundSetSampleRate(44100 / systemSoundQuality);
+		}
+
+		if (systemSoundRes != 0)
+		{
+			SLOG("SOUND set channels (0x%X)", systemSoundRes);
+			soundSetEnable(systemSoundRes);
 		}
 	}
+
+
+	if( InitLink() )
+	{
+		SLOG("Fail GBA Link initialization");
+	}
+
+	SDL_WM_SetCaption("VBA-M", NULL);
 
 	SLOG("GO emu loop!\n");
 
@@ -3163,12 +3383,8 @@ void drawScreenMessage(u8 *screen, int pitch, int x, int y, unsigned int duratio
 void drawSpeed(u8 *screen, int pitch, int x, int y)
 {
 	char buffer[50];
-	// if(showSpeed == 1)
-	//    sprintf(buffer, "%d%%", systemSpeed);
-	// else
-	sprintf(buffer, "%3d%%(%d, %d fps)", systemSpeed,
-			systemFrameSkip,
-			showRenderedFrames);
+
+	snprintf(buffer, sizeof(buffer), "%3.3f fps", curFps);
 
 	drawText(screen, pitch, x, y, buffer, showSpeedTransparent);
 }
@@ -3195,19 +3411,25 @@ void systemDrawScreen()
 	if (ifbFunction)
 	    ifbFunction(pix + g_srcPitch, g_srcPitch, g_srcWidth, g_srcHeight);
 	 */
-	filterFunction(
-			srcbuf + g_srcPitch,    // source buffer
-			g_srcPitch, 			// source buffer pitch
-			delta, 					// delta buffer
-			dstbuf,					// destination buffer
-			g_destPitch, 			// destination buffer pitch
-			g_srcWidth, 			// source width
-			g_srcHeight);			// source height
-
+	if (!g_openGL)
+	{
+		filterFunction(
+				srcbuf,                 // source buffer
+				g_srcPitch, 			// source buffer pitch
+				delta, 					// delta buffer
+				dstbuf,					// destination buffer
+				g_destPitch, 			// destination buffer pitch
+				g_srcWidth, 			// source width
+				g_srcHeight);			// source height
+	}
+	else
+	{
+		dstbuf = srcbuf;
+	}
 	//  drawScreenMessage(screen, destPitch, 10, g_destHeight - 20, 3000);
 
-	//  if (showSpeed && fullscreen)
-	//   drawSpeed(screen, destPitch, 10, 20);
+	if (showSpeed & 0x8000)
+	    drawSpeed(dstbuf, g_destPitch, 5, 5);
 
 #ifndef NO_OGL
 	if (g_openGL) {
@@ -3253,9 +3475,9 @@ void systemShowSpeed(int speed)
 	if(!fullscreen && showSpeed) {
 		char buffer[80];
 		if(showSpeed == 1)
-			sprintf(buffer, "VBA-M - %d%%", systemSpeed);
+			sprintf(buffer, "GBA - %d%%", systemSpeed);
 		else
-			sprintf(buffer, "VBA-M - %d%%(%d, %d fps)", systemSpeed,
+			sprintf(buffer, "GBA - %d%%(%d, %d fps)", systemSpeed,
 					systemFrameSkip,
 					showRenderedFrames);
 
@@ -3292,7 +3514,6 @@ void systemFrame()
 	u32 totalElasped   = time - debugFirstFrameTime;
 	u32 curElaspedTime = time - debugElaspedTime;
 	int curSkip;
-	float curFps;
 
 	++debugFrameCount;
 	++debugTotalFrameCount;
@@ -3308,6 +3529,7 @@ void systemFrame()
 
 		if(autoFrameSkip)
 		{
+#if 0
 			curSkip = (int)((61.00 / (60.0 - curFps)) * 0.9);
 			if (curSkip <= 0)       curSkip = 0;
 			else if (curSkip < 2)   curSkip = 2;
@@ -3316,6 +3538,9 @@ void systemFrame()
 			if (curSkip == 0)        debugSkip = 0;
 			else if (curSkip < debugSkip) debugSkip-=2;
 			else                     debugSkip = curSkip;
+#else
+			systemRenderFps = (int)(curFps - 1.0);
+#endif
 		}
 		SLOG("Elasped:%dms, fps:%3.3f, drift:%3.2fms, skip every %d frame", curElaspedTime, curFps, (float)debugDriftTime/1000.0f, debugSkip);
 
@@ -3503,19 +3728,29 @@ int systemGetSensorY()
 	return inputGetSensorY();
 }
 
+static SoundDriver *sdlSndDriver = NULL;
+
 SoundDriver * systemSoundInit()
 {
 	soundShutdown();
 
-	return new SoundSDL();
+	sdlSndDriver = new SoundSDL();
+	return sdlSndDriver;
 }
 
 void systemOnSoundShutdown()
 {
+	if (sdlSndDriver)
+		delete sdlSndDriver;
+	sdlSndDriver = NULL;
 }
 
 void systemOnWriteDataToSoundBuffer(const u16 * finalWave, int length)
 {
+	if (sdlSndDriver)
+	{
+		sdlSndDriver->write((uint16 *)finalWave, length);
+	}
 }
 
 void log(const char *defaultMsg, ...)

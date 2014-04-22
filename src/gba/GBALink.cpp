@@ -8,13 +8,14 @@ bool gba_joybus_enabled = false;
 // If disabled, gba core won't call any (non-joybus) link functions
 bool gba_link_enabled = false;
 
-#define LOCAL_LINK_NAME "VBA link memory"
+#define LOCAL_LINK_NAME "VBA_link_memory"
 #define IP_LINK_PORT 5738
 
 #include <string.h>
 #include <stdio.h>
 #include "../common/Port.h"
 #include "GBA.h"
+#include "GBAcpu.h"
 #include "GBALink.h"
 #include "GBASockClient.h"
 #ifdef ENABLE_NLS
@@ -157,10 +158,7 @@ HANDLE mmf = NULL;
 int mmf = -1;
 #endif
 char linkevent[] =
-#ifndef __WIN32__
-	"/"
-#endif
-	"VBA link event  ";
+	"VBA_link_event  ";
 static int i, j;
 int linktimeout = 1000;
 LANLINKDATA lanlink;
@@ -232,7 +230,10 @@ const char *MakeInstanceFilename(const char *Input)
 void StartLink(u16 value)
 {
 	if (ioMem == NULL)
+	{
+		SLOG("Request staring GBA Link, but ioMem is not setup");
 		return;
+	}
 
 	if (rfu_enabled) {
 		UPDATE_REG(COMM_SIOCNT, StartRFU(value));
@@ -241,6 +242,7 @@ void StartLink(u16 value)
 
 	switch (GetSIOMode(value, READ16LE(&ioMem[COMM_RCNT]))) {
 	case MULTIPLAYER: {
+		SLOG("Multiplayer start request");
 		bool start = (value & 0x80) && !linkid && !transfer && gba_link_enabled;
 		u16 si = value & 4;
 		// clear start, seqno, si (RO on slave, start = pulse on master)
@@ -316,6 +318,11 @@ void StartLink(u16 value)
 				WRITE32LE(&ioMem[COMM_SIOMULTI0], 0xffffffff);
 				WRITE32LE(&ioMem[COMM_SIOMULTI2], 0xffffffff);
 				value &= ~0x40;
+			}
+			else
+			{
+				SLOG("Write COMM error");
+				value |= 0x40; // comm error
 			}
 		}
 		value |= (transfer != 0) << 7;
@@ -432,8 +439,8 @@ void JoyBusUpdate(int ticks)
 		if ( ((cmd == JOY_CMD_RESET) || (cmd == JOY_CMD_READ) || (cmd == JOY_CMD_WRITE))
 			&& (READ16LE(&ioMem[COMM_JOYCNT]) & JOYCNT_INT_ENABLE) )
 		{
-			IF |= 0x80;
-			UPDATE_REG(0x202, IF);
+			READ_REG(REG_IF) |= 0x80;
+//			UPDATE_REG(0x202, io_registers[REG_IF]);
 		}
 	}
 }
@@ -450,13 +457,13 @@ void LinkUpdate(int ticks)
 	if (rfu_enabled)
 	{
 		rfu_transfer_end -= ticks;
-		if (transfer && rfu_transfer_end <= 0) 
+		if (transfer && rfu_transfer_end <= 0)
 		{
 			transfer = 0;
 			if (READ16LE(&ioMem[COMM_SIOCNT]) & 0x4000)
 			{
-				IF |= 0x80;
-				UPDATE_REG(0x202, IF);
+				READ_REG(REG_IF) |= 0x80;
+//				UPDATE_REG(0x202, io_registers[REG_IF]);
 			}
 			UPDATE_REG(COMM_SIOCNT, READ16LE(&ioMem[COMM_SIOCNT]) & 0xff7f);
 		}
@@ -498,8 +505,8 @@ void LinkUpdate(int ticks)
 			{
 				if (READ16LE(&ioMem[COMM_SIOCNT]) & 0x4000)
 				{
-					IF |= 0x80;
-					UPDATE_REG(0x202, IF);
+					READ_REG(REG_IF) |= 0x80;
+//					UPDATE_REG(0x202, io_registers[REG_IF]);
 				}
 
 				UPDATE_REG(COMM_SIOCNT, (READ16LE(&ioMem[COMM_SIOCNT]) & 0xff0f) | (linkid << 4));
@@ -668,8 +675,8 @@ void LinkUpdate(int ticks)
 		UPDATE_REG(COMM_RCNT, linkid ? 15 : 11);
 		if (value & 0x4000)
 		{
-			IF |= 0x80;
-			UPDATE_REG(0x202, IF);
+			READ_REG(REG_IF) |= 0x80;
+//			UPDATE_REG(0x202, io_registers[REG_IF]);
 		}
 	}
 
@@ -964,6 +971,8 @@ bool InitLink()
 {
 	linkid = 0;
 
+	SLOG("InitLink [start]");
+
 #ifdef __WIN32__
 	if((mmf=CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(LINKDATA), LOCAL_LINK_NAME))==NULL){
 		systemMessage(0, N_("Error creating file mapping"));
@@ -982,11 +991,20 @@ bool InitLink()
 		return false;
 	}
 #else
-	if((mmf = shm_open("/" LOCAL_LINK_NAME, O_RDWR|O_CREAT|O_EXCL, 0777)) < 0) {
+	if((mmf = shm_open(LOCAL_LINK_NAME, O_RDWR|O_CREAT|O_EXCL, 0777)) < 0)
+	{
+		SLOG("shm_open O_CREAT for %s failed", LOCAL_LINK_NAME);
+
 		vbaid = 1;
-		mmf = shm_open("/" LOCAL_LINK_NAME, O_RDWR, 0);
-	} else
+		mmf = shm_open(LOCAL_LINK_NAME, O_RDWR, 0);
+
+		SLOG("InitLink [shm_open], mmf=%d", mmf);
+	}
+	else
+	{
 		vbaid = 0;
+	}
+
 	if(mmf < 0 || ftruncate(mmf, sizeof(LINKDATA)) < 0 ||
 	   !(linkmem = (LINKDATA *)mmap(NULL, sizeof(LINKDATA),
 					PROT_READ|PROT_WRITE, MAP_SHARED,
@@ -994,7 +1012,7 @@ bool InitLink()
 		systemMessage(0, N_("Error creating file mapping"));
 		if(mmf) {
 			if(!vbaid)
-				shm_unlink("/" LOCAL_LINK_NAME);
+				shm_unlink(LOCAL_LINK_NAME);
 			close(mmf);
 		}
 	}
@@ -1025,7 +1043,7 @@ bool InitLink()
 #else
 			munmap(linkmem, sizeof(LINKDATA));
 			if(!vbaid)
-				shm_unlink("/" LOCAL_LINK_NAME);
+				shm_unlink(LOCAL_LINK_NAME);
 			close(mmf);
 #endif
 			systemMessage(0, N_("5 or more GBAs not supported."));
@@ -1036,6 +1054,7 @@ bool InitLink()
 		linkmem->linkflags = f | (1 << vbaid);
 	}
 	linkid = vbaid;
+	SLOG("LinkID: %d", linkid);
 
 	for(i=0;i<4;i++){
 		linkevent[sizeof(linkevent)-2]=(char)i+'1';
@@ -1057,7 +1076,7 @@ bool InitLink()
 					   firstone ? O_CREAT|O_EXCL : 0,
 					   0777, 0)) == SEM_FAILED) {
 			if(firstone)
-				shm_unlink("/" LOCAL_LINK_NAME);
+				shm_unlink(LOCAL_LINK_NAME);
 			munmap(linkmem, sizeof(LINKDATA));
 			close(mmf);
 			for(j=0;j<i;j++){
@@ -1147,7 +1166,7 @@ void CloseLink(void){
 	//regSetDwordValue("LAN", lanlink.active);
 #else
 	if(!(f & 0xf))
-		shm_unlink("/" LOCAL_LINK_NAME);
+		shm_unlink(LOCAL_LINK_NAME);
 	munmap(linkmem, sizeof(LINKDATA));
 	close(mmf);
 #endif
@@ -1160,7 +1179,7 @@ void CloseLink(void){
 void CleanLocalLink()
 {
 #ifndef __WIN32__
-	shm_unlink("/" LOCAL_LINK_NAME);
+	shm_unlink(LOCAL_LINK_NAME);
 	for(int i = 0; i < 4; i++) {
 		linkevent[sizeof(linkevent) - 2] = '1' + i;
 		sem_unlink(linkevent);

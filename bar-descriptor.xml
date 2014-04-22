@@ -18,8 +18,8 @@
     <!-- A string value of the format <0-999>.<0-999>.<0-999> that represents application version which can be used to check for application upgrade. 
          Values can also be 1-part or 2-part. It is not necessary to have a 3-part value.
          An updated version of application must have a versionNumber value higher than the previous version. Required. -->
-    <versionNumber>1.0.5</versionNumber>
-    <buildId>4</buildId>
+    <versionNumber>1.2.0</versionNumber>
+    <buildId>3</buildId>
 
     <!-- Fourth digit segment of the package version. First three segments are taken from the 
          <versionNumber> element.  Must be an integer from 0 to 2^16-1 -->
@@ -35,7 +35,7 @@
 
     <!--  Name of author which is used for signing. Must match the developer name of your development certificate. -->
     <author>ULUMU</author>
-    <authorId>gYAAgBu50mSRKw2uDOPr_-0TWLM</authorId>
+    <authorId>gYAAgGDqpxdfrshwrJslHt83lH4</authorId>
     <description>Gameboy Advance Emulator. Based on vba-m-emulator-for-playbook</description>
     
     <!--  Unique author ID assigned by signing authority. Required if using debug tokens. -->
@@ -60,6 +60,9 @@
     <configuration name="Device-Release">
        <platformArchitecture>armle-v7</platformArchitecture>
        <asset path="Device-Release/GBA_bb" entry="true" type="Qnx/Elf">GBA_bb</asset>
+       <asset path="${workspace_loc:/SDL12/Device-Release/libSDL12.so}" type="Qnx/Elf">lib/libSDL12.so</asset>
+       <asset path="${workspace_loc:/SFML-network/Device-Release/libSFML-network.so}" type="Qnx/Elf">lib/libSFML-network.so</asset>
+       <asset path="${workspace_loc:/TouchControlOverlay/Device-Release/libTouchControlOverlay.so}" type="Qnx/Elf">lib/libTouchControlOverlay.so</asset>
     </configuration>
     <configuration name="Device-Profile">
        <platformArchitecture>armle-v7</platformArchitecture>
@@ -72,6 +75,9 @@
     <configuration name="Simulator">
        <platformArchitecture>x86</platformArchitecture>
        <asset path="Simulator/GBA_bb" entry="true" type="Qnx/Elf">GBA_bb</asset>
+       <asset path="${workspace_loc:/SDL12/Simulator-Debug/libSDL12.so}" type="Qnx/Elf">lib/libSDL12.so</asset>
+       <asset path="${workspace_loc:/SFML-network/Simulator-Debug/libSFML-network.so}" type="Qnx/Elf">lib/libSFML-network.so</asset>
+       <asset path="${workspace_loc:/TouchControlOverlay/Simulator/libTouchControlOverlay.so}" type="Qnx/Elf">lib/libTouchControlOverlay.so</asset>
     </configuration>
     <configuration name="Simulator-Profile">
        <platformArchitecture>x86</platformArchitecture>
@@ -91,9 +97,6 @@
     <asset path="src/vbam.cfg">vbam.cfg</asset>
     <asset path="media/gba_L.png">gba_L.png</asset>
     <asset path="media/gba_R.png">gba_R.png</asset>
-    <asset path="${workspace_loc:/SDL12/Device-Release/libSDL12.so}" type="Qnx/Elf">lib/libSDL12.so</asset>
-    <asset path="${workspace_loc:/SFML-network/Device-Debug/libSFML-network.so}" type="Qnx/Elf">lib/libSFML-network.so</asset>
-    <asset path="${workspace_loc:/TouchControlOverlay/Device-Release/libTouchControlOverlay.so}" type="Qnx/Elf">lib/libTouchControlOverlay.so</asset>
     <asset path="media/start-button.png">start-button.png</asset>
     <asset path="sdl-controls-keyboard.xml">sdl-controls-keyboard.xml</asset>
     <asset path="sdl-topmenu-controls.xml">sdl-topmenu-controls.xml</asset>
@@ -101,6 +104,10 @@
     <asset path="media/loadstate.png">loadstate.png</asset>
     <asset path="media/savestate.png">savestate.png</asset>
     <asset path="media/sndtoggle.png">sndtoggle.png</asset>
+    <asset path="media/cheat.png">cheat.png</asset>
+    <asset path="media/ffwd.png">ffwd.png</asset>
+    <asset path="media/fps.png">fps.png</asset>
+    <asset path="media/resize.png">resize.png</asset>
     
     <!--  The icon for the application, which should be 86x86. -->
     

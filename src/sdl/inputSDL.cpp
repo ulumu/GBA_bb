@@ -402,9 +402,11 @@ void inputInitJoysticks()
 
 	sdlNumDevices = SDL_NumJoysticks();
 
-	if(sdlNumDevices)
-		sdlDevices = (SDL_Joystick **)calloc(1,sdlNumDevices *
-				sizeof(SDL_Joystick **));
+	if(sdlNumDevices > 0)
+	{
+		sdlDevices = (SDL_Joystick **)calloc(1,sdlNumDevices * sizeof(SDL_Joystick **));
+	}
+
 	bool usesJoy = false;
 
 	for(int j = 0; j < 4; j++) {
@@ -425,10 +427,14 @@ void inputInitJoysticks()
 						ok = false;
 				}
 
-				if(!ok)
-					joypad[j][i] = joypad[PAD_DEFAULT][i];
-				else
+//				if(!ok)
+//					joypad[j][i] = joypad[PAD_DEFAULT][i];
+//				else
+				if (ok)
+				{
 					usesJoy = true;
+					inputSetDefaultJoypad((EPad)(dev+1));
+				}
 			}
 		}
 	}
@@ -467,6 +473,12 @@ void inputProcessSDLEvent(const SDL_Event &event)
 
     switch(event.type)
     {
+    	case SDL_SYSWMEVENT:
+    		// special system event
+    		if (sdlDevices == NULL)
+    			inputInitJoysticks();
+    		break;
+
         case SDL_KEYDOWN:
             sdlUpdateKey(event.key.keysym.sym, true);
             break;

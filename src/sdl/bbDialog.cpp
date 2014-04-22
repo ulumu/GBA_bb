@@ -6,13 +6,29 @@
  */
 
 #include "bbDialog.h"
+#include "System.h"
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
+#include <errno.h>
+
+#define CHECK(x)                    \
+	if (BPS_SUCCESS != x)           \
+	{	                            \
+		SLOG("Failed calling [%s], err:%d", #x, errno); \
+		return;                     \
+	}
+
+#define CHECKR(x)                      \
+	if (BPS_SUCCESS != x)              \
+	{	                               \
+		SLOG("Failed calling [%s], err:%d", #x, errno); \
+		return -1;                     \
+	}
 
 bbDialog::bbDialog() {
 	mDialog = 0;
-	dialog_request_events(0);
+	CHECK( dialog_request_events(0) );
 }
 
 bbDialog::~bbDialog() {
@@ -27,15 +43,15 @@ void bbDialog::showAlert(const char *title, const char *content)
 
     if (title || content)
     {
-		dialog_create_alert(&mDialog);
+    	CHECK( dialog_create_alert(&mDialog) );
 
 		if (mDialog)
 		{
-			if (title)   dialog_set_title_text(mDialog, title);
-			if (content) dialog_set_alert_message_text(mDialog, content);
-			dialog_add_button(mDialog, DIALOG_OK_LABEL, true, okay_button_context, true);
+			if (title)   CHECK( dialog_set_title_text(mDialog, title) );
+			if (content) CHECK( dialog_set_alert_message_text(mDialog, content) );
+			CHECK( dialog_add_button(mDialog, DIALOG_OK_LABEL, true, okay_button_context, true) );
 
-			dialog_show(mDialog);
+			CHECK( dialog_show(mDialog) );
 
 			while (1) {
 				bps_event_t *event = 0;
@@ -47,9 +63,9 @@ void bbDialog::showAlert(const char *title, const char *content)
 				{
 					if (bps_event_get_domain(event) == dialog_get_domain())
 					{
-						(void)dialog_event_get_selected_index(event);
-						(void)dialog_event_get_selected_label(event);
-						(void)dialog_event_get_selected_context(event);
+						CHECK( dialog_event_get_selected_index(event) );
+						CHECK( dialog_event_get_selected_label(event) );
+						CHECK( dialog_event_get_selected_context(event) );
 						break;
 					}
 				}
@@ -68,16 +84,16 @@ int bbDialog::showPopuplistDialog(const char **list, int listCount, const char *
 
 	if (list && (listCount > 0) )
 	{
-		dialog_create_popuplist(&mDialog);
-		dialog_set_popuplist_items(mDialog, list, listCount);
-		if (title) dialog_set_title_text(mDialog, title);
+		CHECKR( dialog_create_popuplist(&mDialog) );
+		CHECKR( dialog_set_popuplist_items(mDialog, list, listCount) );
+		if (title) CHECKR( dialog_set_title_text(mDialog, title) );
 
-		dialog_add_button(mDialog, DIALOG_CANCEL_LABEL, true, cancel_button_context, true);
-		dialog_add_button(mDialog, DIALOG_OK_LABEL,     true, okay_button_context,   true);
+		CHECKR( dialog_add_button(mDialog, DIALOG_CANCEL_LABEL, true, cancel_button_context, true) );
+		CHECKR( dialog_add_button(mDialog, DIALOG_OK_LABEL,     true, okay_button_context,   true) );
 
-		dialog_set_popuplist_multiselect(mDialog, false);
+		CHECKR( dialog_set_popuplist_multiselect(mDialog, false) );
 
-		dialog_show(mDialog);
+		CHECKR( dialog_show(mDialog) );
 
 		while(1)
 		{
@@ -96,7 +112,7 @@ int bbDialog::showPopuplistDialog(const char **list, int listCount, const char *
 
 					if(strcmp(label, DIALOG_OK_LABEL) == 0)
 					{
-						dialog_event_get_popuplist_selected_indices(event, (int**)response, &num);
+						CHECKR( dialog_event_get_popuplist_selected_indices(event, (int**)response, &num) );
 						if(num != 0)
 						{
 							//*response[0] is the index that was selected
@@ -119,13 +135,13 @@ void bbDialog::showNotification(const char *content)
 {
 	if (content)
 	{
-		dialog_create_toast(&mDialog);
+		CHECK( dialog_create_toast(&mDialog) );
 
-		if (content) dialog_set_toast_message_text(mDialog, content);
+		if (content) CHECK( dialog_set_toast_message_text(mDialog, content) );
 
-		dialog_set_toast_position(mDialog, DIALOG_POSITION_TOP_CENTER);
+		CHECK( dialog_set_toast_position(mDialog, DIALOG_POSITION_TOP_CENTER) );
 
-		dialog_show(mDialog);
+		CHECK( dialog_show(mDialog) );
 
 		while(1)
 		{
