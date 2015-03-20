@@ -10,6 +10,7 @@
 
 #include <bps/bps.h>
 #include <bps/dialog.h>
+#include <bps/navigator.h>
 
 class bbDialog {
 public:

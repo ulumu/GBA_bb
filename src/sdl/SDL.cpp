@@ -68,7 +68,7 @@ using namespace std;
 #include <bps/dialog.h>
 #include <bps/bps.h>
 #include <bps/event.h>
-#include "..\utils\xstring.h"
+#include "../utils/xstring.h"
 
 #ifndef __QNXNTO__
 #include "debugger.h"
@@ -127,6 +127,8 @@ void sdlInitVideo();
 char g_runningFile_str[512];
 
 static bbDialog *dbgDialog = NULL;
+
+#ifdef NDEBUG
 static char dbgString[256];
 
 #define DLOG(fmt, ...) \
@@ -135,6 +137,7 @@ static char dbgString[256];
 		sprintf(dbgString, fmt, ##__VA_ARGS__); \
 		dbgDialog->showNotification(dbgString); \
 	}
+#endif
 
 struct EmulatedSystem emulator = {
 	NULL,
@@ -283,6 +286,7 @@ static int        ignore_first_resize_event = 0;
 
 /* forward */
 void systemConsoleMessage(const char*);
+void sdlApplyPerImagePreferences();
 
 #ifndef __QNXNTO__
 void (*dbgMain)() = debuggerMain;
@@ -723,7 +727,7 @@ void initGbFrameSize(void)
 		} else {
 			g_srcWidth         = GB_ACTUAL_WIDTH;
 			g_srcHeight        = GB_ACTUAL_HEIGHT;
-			gbBorderLineSkip   = 0; //GB_ACTUAL_WIDTH;
+			gbBorderLineSkip   = GB_ACTUAL_WIDTH;
 			gbBorderColumnSkip = 0;
 			gbBorderRowSkip    = 0;
 		}
@@ -874,7 +878,7 @@ int AutoLoadRom(void)
 			return false;
 		}
 
-		// sdlApplyPerImagePreferences();
+		sdlApplyPerImagePreferences();
 		doMirroring(mirroringEnable);
 
 		emulator = GBASystem;
@@ -1667,7 +1671,7 @@ void sdlReadPreferences()
 	fclose(f);
 }
 
-static void sdlApplyPerImagePreferences()
+void sdlApplyPerImagePreferences()
 {
 	FILE *f = sdlFindFile("/accounts/1000/shared/misc/gbaemu/vbam-over.ini");
 	if(!f) {
@@ -2714,6 +2718,20 @@ int main(int argc, char **argv)
 	bps_initialize();
 	dialog_request_events(0);
 
+	/*
+	 * From OS 10.3.1, dialog box require a parent window, so we
+	 * need to call SDL_Init to create the main parent window.
+	 */
+	SLOG("Initialize SDL ...\n");
+
+	int flags = SDL_INIT_VIDEO|SDL_INIT_AUDIO|
+			SDL_INIT_TIMER|SDL_INIT_NOPARACHUTE;
+
+	if(SDL_Init(flags)) {
+		SLOG("Failed to init SDL: %s", SDL_GetError());
+		exit(-1);
+	}
+
 	arg0 = argv[0];
 
 	captureDir[0] = 0;
@@ -2747,14 +2765,13 @@ int main(int argc, char **argv)
 	useBios = true;
 	strcpy(biosFileName, SYSROMDIR"gba.bin");
 
-	ifstream ifile("/accounts/1000/shared/misc/gbaemu/vbam-over.ini");
-	if(!ifile){
+	/*
+	 * Always overwrite vbam-over.ini
+	 */
+	{
 		ifstream f1("app/native/vba-over.ini", fstream::binary);
 		ofstream f2("/accounts/1000/shared/misc/gbaemu/vbam-over.ini", fstream::trunc|fstream::binary);
 		f2 << f1.rdbuf();
-	}
-	else {
-		ifile.close();
 	}
 
 	ifstream ifile2("/accounts/1000/shared/misc/gbaemu/vbam.cfg");
@@ -3184,18 +3201,6 @@ int main(int argc, char **argv)
 
 	if(debuggerStub)
 		remoteInit();
-
-	SLOG("Initialize SDL ...\n");
-
-	int flags = SDL_INIT_VIDEO|SDL_INIT_AUDIO|
-			SDL_INIT_TIMER|SDL_INIT_NOPARACHUTE;
-
-	// int flags = SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER;
-
-	if(SDL_Init(flags)) {
-		SLOG("Failed to init SDL: %s", SDL_GetError());
-		exit(-1);
-	}
 
 	if(SDL_InitSubSystem(SDL_INIT_JOYSTICK)) {
 		SLOG("Failed to init joystick support: %s", SDL_GetError());

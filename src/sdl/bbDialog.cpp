@@ -95,6 +95,8 @@ int bbDialog::showPopuplistDialog(const char **list, int listCount, const char *
 
 		CHECKR( dialog_show(mDialog) );
 
+		SLOG("Show Dialog");
+
 		while(1)
 		{
 			bps_event_t *event = 0;
@@ -103,7 +105,15 @@ int bbDialog::showPopuplistDialog(const char **list, int listCount, const char *
 
 			if (event)
 			{
-				if (bps_event_get_domain(event) == dialog_get_domain())
+	            int domain = bps_event_get_domain(event);
+
+	            if (domain == navigator_get_domain())
+	            {
+	                if (bps_event_get_code(event) == NAVIGATOR_EXIT) {
+	                    break;
+	                }
+	            }
+	            else if (domain == dialog_get_domain())
 				{
 					int *response[1];
 					int num;

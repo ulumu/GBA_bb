@@ -3,6 +3,16 @@ VBAMpb BB10 Port of VBA-M GBA/GB/GBC emulator
 misc\roms\gba        place unzipped .gba or .gb games in here (sdcard or phone)
 misc\gbaemu          configuration, saves and other stuff.
 
+v1.2.0.5
+
+- Fix black screen during startup in OS 10.3.1 (dialog box not showing up)
+- Fix Game saving issue in Golden Sun
+
+v1.2.0.4
+
+- Fix GB borderless bug. Now default BorderOn option in vbam.cfg is set to 0
+- Fix crash in Summon Night Swordcraft Story 2, and other games that using the drawRotationScreen feature
+
 v1.2.0.3
 
 - New virtual memory model

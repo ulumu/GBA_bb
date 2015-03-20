@@ -1742,15 +1742,15 @@ u8 gbReadMemory(register u16 address)
     if (
          (
            (gbHardware & 0xa) &&
-           (  
+           (
              (gbLcdModeDelayed != 3) ||
              (
                ((register_LY == 0) && (gbScreenOn == false) && (register_LCDC & 0x80)) &&
                (gbLcdLYIncrementTicksDelayed == (GBLY_INCREMENT_CLOCK_TICKS - GBLCD_MODE_2_CLOCK_TICKS))
              )
-           )  
+           )
          )
-         ||   
+         ||
          (
            (gbHardware & 0x5) &&
            (gbLcdModeDelayed != 3) &&

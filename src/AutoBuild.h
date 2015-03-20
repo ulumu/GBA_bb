@@ -31,9 +31,9 @@
 #define SDCARDROMDIR   "/accounts/1000/removable/sdcard/misc/roms/gba/"
 
 #ifdef STL100_1
-#define GBA_VERSION        "1.2.1.3"
+#define GBA_VERSION        "1.2.1.5"
 #else
-#define GBA_VERSION        "1.2.0.3"
+#define GBA_VERSION        "1.2.0.5"
 #endif
 
 #endif //__AUTOBUILD_H__

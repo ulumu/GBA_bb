@@ -125,7 +125,7 @@ static shmNode_t *gba_createSharedMem(const char *memName, void *memAddr, int me
         return NULL;
     }
 
-	memPtr = (u8 *)mmap(memAddr, memSize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	memPtr = (u8 *)mmap64(memAddr, memSize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
 #ifdef __X86__
 	if (NULL == memPtr) {
 		systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate Shared memory for %s"), memName);
@@ -1196,7 +1196,7 @@ static void *lineRender_thread(void *option)
 		}
 		else if (rcvid == 0)
 		{
-			// it’s a pulse, look in msg.pulse… for code
+			// itï¿½s a pulse, look in msg.pulseï¿½ for code
 			switch (gbaMsg.pulse.code)
 			{
 				case GBA_PULSE_RENDERLINE:
@@ -5190,7 +5190,7 @@ updateLoop:
 						CPUCompareVCOUNT();
 					}
 				} else {
-					int framesToSkip = 1;
+					int framesToSkip = 2;
 
 					if(speedup)
 						framesToSkip = 9;
@@ -5603,5 +5603,4 @@ struct EmulatedSystem GBASystem = {
 		5000
 #endif
 };
-
 

@@ -129,6 +129,7 @@ extern bool mirroringEnable;
 extern bool skipSaveGameBattery; // skip battery data when reading save states
 extern bool skipSaveGameCheats;  // skip cheat list data when reading save states
 extern int customBackdropColor;
+extern bool flashSizeOverride;
 
 extern u8 *bios;
 extern u8 *rom;

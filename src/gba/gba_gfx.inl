@@ -4,6 +4,8 @@
 static u32 map_widths[]  = { 256, 512, 256, 512 };
 static u32 map_heights[] = { 256, 256, 512, 512 };
 
+#define __SIGNEXTOPT__
+
 static INLINE void gfxDrawTextScreen(bool process_layer0, bool process_layer1, bool process_layer2, bool process_layer3)
 {
 	bool  process_layers[4] = {process_layer0, process_layer1, process_layer2, process_layer3};
@@ -172,6 +174,12 @@ u16 pa,  u16 pb, u16 pc,  u16 pd, int& currentX, int& currentY, int changed, u32
 
 	int yshift = ((control >> 14) & 3)+4;
 
+#ifdef __SIGNEXTOPT__
+	int16 dx  = ((int16)(pa));
+	int16 dmx = ((int16)(pb));
+	int16 dy  = ((int16)(pc));
+	int16 dmy = ((int16)(pd));
+#else
 	int dx = pa & 0x7FFF;
 	if(pa & 0x8000)
 		dx |= 0xFFFF8000;
@@ -184,6 +192,7 @@ u16 pa,  u16 pb, u16 pc,  u16 pd, int& currentX, int& currentY, int changed, u32
 	int dmy = pd & 0x7FFF;
 	if(pd & 0x8000)
 		dmy |= 0xFFFF8000;
+#endif
 
 	if(READ_REG(REG_VCOUNT) == 0)
 		changed = 3;
@@ -297,16 +306,31 @@ static INLINE void gfxDrawRotScreen16Bit( int& currentX,  int& currentY, int cha
 //	if(READ_REG(REG_BG2Y_H) & 0x0800)
 //		startY |= 0xF8000000;
 
-	int dx  = (int32)(READ_REG(REG_BG2PA));
-	int dmx = (int32)(READ_REG(REG_BG2PB));
-	int dy  = (int32)(READ_REG(REG_BG2PC));
-	int dmy = (int32)(READ_REG(REG_BG2PD));
+#ifdef __SIGNEXTOPT__
+	int16 dx  = ((int16)(READ_SREG(REG_BG2PA)));
+	int16 dmx = ((int16)(READ_SREG(REG_BG2PB)));
+	int16 dy  = ((int16)(READ_SREG(REG_BG2PC)));
+	int16 dmy = ((int16)(READ_SREG(REG_BG2PD)));
+#else
+	int dx = READ_REG(REG_BG2PA) & 0x7FFF;
+	if(READ_REG(REG_BG2PA) & 0x8000)
+		dx |= 0xFFFF8000;
+	int dmx = READ_REG(REG_BG2PB) & 0x7FFF;
+	if(READ_REG(REG_BG2PB) & 0x8000)
+		dmx |= 0xFFFF8000;
+	int dy = READ_REG(REG_BG2PC) & 0x7FFF;
+	if(READ_REG(REG_BG2PC) & 0x8000)
+		dy |= 0xFFFF8000;
+	int dmy = READ_REG(REG_BG2PD) & 0x7FFF;
+	if(READ_REG(REG_BG2PD) & 0x8000)
+		dmy |= 0xFFFF8000;
+#endif
 
 	if(READ_REG(REG_VCOUNT) == 0)
 		changed = 3;
 
-	currentX += dmx;
-	currentY += dmy;
+	currentX += (int)dmx;
+	currentY += (int)dmy;
 
 	if(changed & 1)
 	{
@@ -328,8 +352,8 @@ static INLINE void gfxDrawRotScreen16Bit( int& currentX,  int& currentY, int cha
 	if(READ_REG(REG_BG2CNT) & 0x40) {
 		int mosaicY = ((READ_REG(REG_MOSAIC) & 0xF0)>>4) + 1;
 		int y = (READ_REG(REG_VCOUNT) % mosaicY);
-		realX -= y*dmx;
-		realY -= y*dmy;
+		realX -= y* ((int)dmx);
+		realY -= y* ((int)dmy);
 	}
 
 	unsigned xxx = (realX >> 8);
@@ -341,8 +365,8 @@ static INLINE void gfxDrawRotScreen16Bit( int& currentX,  int& currentY, int cha
 		if(xxx < sizeX && yyy < sizeY)
 			line[2][x] = (READ16LE(&screenBase[yyy * sizeX + xxx]) | prio);
 
-		realX += dx;
-		realY += dy;
+		realX += (int)dx;
+		realY += (int)dy;
 
 		xxx = (realX >> 8);
 		yyy = (realY >> 8);
@@ -380,31 +404,44 @@ static INLINE void gfxDrawRotScreen256(int &currentX, int& currentY, int changed
 	if(READ_REG(REG_BG2Y_H) & 0x0800)
 		startY |= 0xF8000000;
 
-	int dx  = (int32)(READ_REG(REG_BG2PA));
-	int dmx = (int32)(READ_REG(REG_BG2PB));
-	int dy  = (int32)(READ_REG(REG_BG2PC));
-	int dmy = (int32)(READ_REG(REG_BG2PD));
+#ifdef __SIGNEXTOPT__
+	int16 dx  = ((int16)(READ_SREG(REG_BG2PA)));
+	int16 dmx = ((int16)(READ_SREG(REG_BG2PB)));
+	int16 dy  = ((int16)(READ_SREG(REG_BG2PC)));
+	int16 dmy = ((int16)(READ_SREG(REG_BG2PD)));
+#else
+	int dx = READ_REG(REG_BG2PA) & 0x7FFF;
+	if(READ_REG(REG_BG2PA) & 0x8000)
+		dx |= 0xFFFF8000;
+	int dmx = READ_REG(REG_BG2PB) & 0x7FFF;
+	if(READ_REG(REG_BG2PB) & 0x8000)
+		dmx |= 0xFFFF8000;
+	int dy = READ_REG(REG_BG2PC) & 0x7FFF;
+	if(READ_REG(REG_BG2PC) & 0x8000)
+		dy |= 0xFFFF8000;
+	int dmy = READ_REG(REG_BG2PD) & 0x7FFF;
+	if(READ_REG(REG_BG2PD) & 0x8000)
+		dmy |= 0xFFFF8000;
+#endif
 
 	if(READ_REG(REG_VCOUNT) == 0)
 		changed = 3;
 
-	currentX += dmx;
-	currentY += dmy;
+	currentX += (int)dmx;
+	currentY += (int)dmy;
 
 	if(changed & 1)
 	{
-//		currentX = (IO_REG[REG_BG2X_L]) | ((IO_REG[REG_BG2X_H] & 0x07FF)<<16);
-//		if(IO_REG[REG_BG2X_H] & 0x0800)
-//			currentX |= 0xF8000000;
-		currentX = startX;
+		currentX = (READ_REG(REG_BG2X_L)) | ((READ_REG(REG_BG2X_H) & 0x07FF)<<16);
+		if(READ_REG(REG_BG2X_H) & 0x0800)
+			currentX |= 0xF8000000;
 	}
 
 	if(changed & 2)
 	{
-//		currentY = (IO_REG[REG_BG2Y_L]) | ((IO_REG[REG_BG2Y_H] & 0x07FF)<<16);
-//		if(IO_REG[REG_BG2Y_H] & 0x0800)
-//			currentY |= 0xF8000000;
-		currentY = startY;
+		currentY = (READ_REG(REG_BG2Y_L)) | ((READ_REG(REG_BG2Y_H) & 0x07FF)<<16);
+		if(READ_REG(REG_BG2Y_H) & 0x0800)
+			currentY |= 0xF8000000;
 	}
 
 	int realX = currentX;
@@ -413,21 +450,21 @@ static INLINE void gfxDrawRotScreen256(int &currentX, int& currentY, int changed
 	if(READ_REG(REG_BG2CNT) & 0x40) {
 		int mosaicY = ((READ_REG(REG_MOSAIC) & 0xF0)>>4) + 1;
 		int y = READ_REG(REG_VCOUNT) - (READ_REG(REG_VCOUNT) % mosaicY);
-		realX = startX + y*dmx;
-		realY = startY + y*dmy;
+		realX = startX + y* ((int)dmx);
+		realY = startY + y* ((int)dmy);
 	}
 
 	int xxx = (realX >> 8);
 	int yyy = (realY >> 8);
 
 	memset(line[2], -1, 240 * sizeof(u32));
-	for(u32 x = 0; x < 240; ++x)
+	for(u32 x = 0; x < 240 && yyy >= 0; ++x)
 	{
 		u8 color = screenBase[yyy * 240 + xxx];
 		if(unsigned(xxx) < sizeX && unsigned(yyy) < sizeY && color)
 			line[2][x] = (READ16LE(&palette[color])|prio);
-		realX += dx;
-		realY += dy;
+		realX += (int)dx;
+		realY += (int)dy;
 
 		xxx = (realX >> 8);
 		yyy = (realY >> 8);
@@ -467,31 +504,44 @@ static INLINE void gfxDrawRotScreen16Bit160(int& currentX, int& currentY, int ch
 	if(READ_REG(REG_BG2Y_H) & 0x0800)
 		startY |= 0xF8000000;
 
-	int dx  = (int32)READ_REG(REG_BG2PA);
-	int dmx = (int32)READ_REG(REG_BG2PB);
-	int dy  = (int32)READ_REG(REG_BG2PC);
-	int dmy = (int32)READ_REG(REG_BG2PD);
+#ifdef __SIGNEXTOPT__
+	int16 dx  = ((int16)(READ_SREG(REG_BG2PA)));
+	int16 dmx = ((int16)(READ_SREG(REG_BG2PB)));
+	int16 dy  = ((int16)(READ_SREG(REG_BG2PC)));
+	int16 dmy = ((int16)(READ_SREG(REG_BG2PD)));
+#else
+	int dx = READ_REG(REG_BG2PA) & 0x7FFF;
+	if(READ_REG(REG_BG2PA) & 0x8000)
+		dx |= 0xFFFF8000;
+	int dmx = READ_REG(REG_BG2PB) & 0x7FFF;
+	if(READ_REG(REG_BG2PB) & 0x8000)
+		dmx |= 0xFFFF8000;
+	int dy = READ_REG(REG_BG2PC) & 0x7FFF;
+	if(READ_REG(REG_BG2PC) & 0x8000)
+		dy |= 0xFFFF8000;
+	int dmy = READ_REG(REG_BG2PD) & 0x7FFF;
+	if(READ_REG(REG_BG2PD) & 0x8000)
+		dmy |= 0xFFFF8000;
+#endif
 
 	if(READ_REG(REG_VCOUNT) == 0)
 		changed = 3;
 
-	currentX += dmx;
-	currentY += dmy;
+	currentX += (int)dmx;
+	currentY += (int)dmy;
 
 	if(changed & 1)
 	{
-//		currentX = (IO_REG[REG_BG2X_L]) | ((IO_REG[REG_BG2X_H] & 0x07FF)<<16);
-//		if(IO_REG[REG_BG2X_H] & 0x0800)
-//			currentX |= 0xF8000000;
-		currentX = startX;
+		currentX = (IO_REG[REG_BG2X_L]) | ((IO_REG[REG_BG2X_H] & 0x07FF)<<16);
+		if(IO_REG[REG_BG2X_H] & 0x0800)
+			currentX |= 0xF8000000;
 	}
 
 	if(changed & 2)
 	{
-//		currentY = (IO_REG[REG_BG2Y_L]) | ((IO_REG[REG_BG2Y_H] & 0x07FF)<<16);
-//		if(IO_REG[REG_BG2Y_H] & 0x0800)
-//			currentY |= 0xF8000000;
-		currentY = startY;
+		currentY = (IO_REG[REG_BG2Y_L]) | ((IO_REG[REG_BG2Y_H] & 0x07FF)<<16);
+		if(IO_REG[REG_BG2Y_H] & 0x0800)
+			currentY |= 0xF8000000;
 	}
 
 	int realX = currentX;
@@ -500,8 +550,8 @@ static INLINE void gfxDrawRotScreen16Bit160(int& currentX, int& currentY, int ch
 	if(READ_REG(REG_BG2CNT) & 0x40) {
 		int mosaicY = ((READ_REG(REG_MOSAIC) & 0xF0)>>4) + 1;
 		int y = READ_REG(REG_VCOUNT) - (READ_REG(REG_VCOUNT) % mosaicY);
-		realX = startX + y*dmx;
-		realY = startY + y*dmy;
+		realX = startX + y* ((int)dmx);
+		realY = startY + y* ((int)dmy);
 	}
 
 	int xxx = (realX >> 8);
@@ -513,8 +563,8 @@ static INLINE void gfxDrawRotScreen16Bit160(int& currentX, int& currentY, int ch
 		if(unsigned(xxx) < sizeX && unsigned(yyy) < sizeY)
 			line[2][x] = (READ16LE(&screenBase[yyy * sizeX + xxx]) | prio);
 
-		realX += dx;
-		realY += dy;
+		realX += (int)dx;
+		realY += (int)dy;
 
 		xxx = (realX >> 8);
 		yyy = (realY >> 8);
@@ -658,6 +708,12 @@ static INLINE void gfxDrawSprites (void)
 					lineOBJpix-=8;
 					int rot = (((a1 >> 9) & 0x1F) << 4);
 					u16 *OAM = (u16 *)oam;
+#ifdef __SIGNEXTOPT__
+					int16 dx  = *(int16 *)(&OAM[3 + rot]);
+					int16 dmx = *(int16 *)(&OAM[7 + rot]);
+					int16 dy  = *(int16 *)(&OAM[11 + rot]);
+					int16 dmy = *(int16 *)(&OAM[15 + rot]);
+#else
 					int dx = READ16LE(&OAM[3 + rot]);
 					if(dx & 0x8000)
 						dx |= 0xFFFF8000;
@@ -670,7 +726,7 @@ static INLINE void gfxDrawSprites (void)
 					int dmy = READ16LE(&OAM[15 + rot]);
 					if(dmy & 0x8000)
 						dmy |= 0xFFFF8000;
-
+#endif
 					if(a0 & 0x1000)
 						t -= (t % mosaicY);
 
@@ -1054,6 +1110,12 @@ static INLINE void gfxDrawOBJWin (void)
 					// int t2 = t - (fieldY >> 1);
 					int rot = (a1 >> 9) & 0x1F;
 					u16 *OAM = (u16 *)oam;
+#ifdef __SIGNEXTOPT__
+					int16 dx  = *(int16 *)(&OAM[3 + (rot << 4)]);
+					int16 dmx = *(int16 *)(&OAM[7 + (rot << 4)]);
+					int16 dy  = *(int16 *)(&OAM[11 + (rot << 4)]);
+					int16 dmy = *(int16 *)(&OAM[15 + (rot << 4)]);
+#else
 					int dx = READ16LE(&OAM[3 + (rot << 4)]);
 					if(dx & 0x8000)
 						dx |= 0xFFFF8000;
@@ -1066,7 +1128,7 @@ static INLINE void gfxDrawOBJWin (void)
 					int dmy = READ16LE(&OAM[15 + (rot << 4)]);
 					if(dmy & 0x8000)
 						dmy |= 0xFFFF8000;
-
+#endif
 					int realX = ((sizeX) << 7) - (fieldX >> 1)*dx - (fieldY>>1)*dmx + t * dmx;
 					int realY = ((sizeY) << 7) - (fieldX >> 1)*dy - (fieldY>>1)*dmy + t * dmy;
 

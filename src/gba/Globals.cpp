@@ -34,6 +34,7 @@ bool cheatsEnabled = false;
 bool mirroringEnable = false;
 bool skipSaveGameBattery = false;
 bool skipSaveGameCheats = false;
+bool flashSizeOverride = true;
 
 // this is an optional hack to change the backdrop/background color:
 // -1: disabled
